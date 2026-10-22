@@ -1,0 +1,2048 @@
+{
+  "name": "ABC Tech | Phản hồi và Hiệu suất",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "1a199c7a-8936-4f50-aa8d-754657094161",
+      "name": "Kích hoạt thử nghiệm thủ công",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -420,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "3255d6de-9879-4802-97fd-0734c58b054c",
+              "name": "employee_id",
+              "value": "EMP-003",
+              "type": "string"
+            },
+            {
+              "id": "cd4f0ebf-ebde-4502-8364-f79e957acba5",
+              "name": "period",
+              "value": "2026-W40",
+              "type": "string"
+            },
+            {
+              "id": "023f5efe-f312-4d63-8ade-2fe97b45869d",
+              "name": "satisfaction",
+              "value": 3,
+              "type": "number"
+            },
+            {
+              "id": "13eb73fb-d646-4f24-80fd-254aa6e101d1",
+              "name": "feedback_text",
+              "value": "Tài liệu quy trình xử lý khiếu nại chưa rõ ràng, cần thêm hướng dẫn thực tế để xử lý nhanh hơn.",
+              "type": "string"
+            },
+            {
+              "id": "81bba361-b3e8-4c77-b704-7c61b90bde58",
+              "name": "need_support",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "cffdfb3f-7c33-419e-b1d3-1cdb7723588f",
+              "name": "employee_email",
+              "value": "thinhzxc124@gmail.com",
+              "type": "string"
+            },
+            {
+              "id": "d69d6738-18f2-4950-ba15-5fccf2558b71",
+              "name": "hr_email",
+              "value": "whateverholding246@gmail.com",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ac34470d-0f3d-416c-bf22-baa8f2756475",
+      "name": "Cấu hình tham số kiểm thử",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -200,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "formTitle": "ABC Tech — Khảo sát & Phản hồi Nhân viên",
+        "formDescription": "Biểu mẫu ghi nhận phản hồi định kỳ, đánh giá mức độ hài lòng và tiếp nhận đề xuất hỗ trợ từ nhân sự ABC Tech. Dữ liệu được AI phân tích và bảo mật bởi Phòng Quản trị Nhân sự.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Mã nhân viên (ví dụ: EMP-003)",
+              "fieldName": "employee_id",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Kỳ đánh giá (ví dụ: 2026-W40)",
+              "fieldName": "period",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Mức độ hài lòng công việc (1 - 5 sao)",
+              "fieldType": "dropdown",
+              "fieldName": "satisfaction",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "5 - Rất hài lòng"
+                  },
+                  {
+                    "option": "4 - Hài lòng"
+                  },
+                  {
+                    "option": "3 - Bình thường"
+                  },
+                  {
+                    "option": "2 - Chưa hài lòng"
+                  },
+                  {
+                    "option": "1 - Rất không hài lòng"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Ý kiến phản hồi / Vướng mắc trong công việc",
+              "fieldType": "textarea",
+              "fieldName": "feedback_text",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Bạn có cần HR trao đổi hỗ trợ trực tiếp không?",
+              "fieldType": "dropdown",
+              "fieldName": "need_support",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Có, tôi cần HR hỗ trợ"
+                  },
+                  {
+                    "option": "Không, tôi chỉ chia sẻ ý kiến"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Email nhân viên nhận thông báo kế hoạch hỗ trợ (không bắt buộc)",
+              "fieldType": "email",
+              "fieldName": "employee_email"
+            }
+          ]
+        },
+        "options": {
+          "appendAttribution": false,
+          "buttonLabel": "Gửi ý kiến phản hồi",
+          "path": "abc-tech-feedback",
+          "respondWithOptions": {
+            "values": {
+              "formSubmittedText": "Cảm ơn bạn đã gửi ý kiến phản hồi. Hệ thống ABC Tech đã tiếp nhận và đang tiến hành phân tích tự động. Kết quả sẽ được bộ phận Quản trị Nhân sự xem xét và phản hồi qua email."
+            }
+          },
+          "ignoreBots": true,
+          "useWorkflowTimezone": true
+        }
+      },
+      "id": "8906cd7b-59ec-41a9-9f9c-172ca9438053",
+      "name": "Biểu mẫu phản hồi nhân viên",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        -420,
+        20
+      ],
+      "webhookId": "48be2205-1a3b-4835-b220-abc3tech003f"
+    },
+    {
+      "parameters": {
+        "jsCode": "// =========================================================================\n// ABC Tech — Workflow 3: Phản hồi định kỳ & Quản trị hiệu suất (WF3)\n// Phụ trách phát triển: Trần Vĩnh Thịnh (thinhtv104)\n// Đề tài: Chuyên đề 2 - Tự động hóa HR bằng n8n & Trí tuệ nhân tạo (AI)\n// =========================================================================\n\nconst raw = $input.first().json;\nconst data = (raw && raw.body && typeof raw.body === 'object') ? { ...raw, ...raw.body } : (raw || {});\nconst clean = (v, maxLen) => String(v ?? '').trim().slice(0, maxLen);\n\nconst employee_id = clean(data.employee_id, 20).toUpperCase();\nconst period = clean(data.period, 20);\nlet satisfaction = parseInt(String(data.satisfaction).slice(0, 1), 10);\nif (isNaN(satisfaction) || satisfaction < 1 || satisfaction > 5) {\n  satisfaction = 3;\n}\nconst feedback_text = clean(data.feedback_text, 2000);\nconst need_support = (data.need_support === true || data.need_support === 'true' || String(data.need_support || '').toLowerCase().includes('có') || satisfaction <= 2);\nconst employee_email = clean(data.employee_email || data.demo_email || '', 254).toLowerCase();\nconst hr_email = clean(data.hr_email || 'whateverholding246@gmail.com', 254).toLowerCase();\n\nreturn [{\n  json: {\n    employee_id,\n    period,\n    satisfaction,\n    feedback_text,\n    need_support,\n    employee_email,\n    hr_email,\n    demo_email: employee_email,\n    received_at: new Date().toISOString()\n  }\n}];\n"
+      },
+      "id": "9e204fc8-555a-415b-8f76-6d8d6c976571",
+      "name": "Chuẩn hóa dữ liệu tiếp nhận",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        20,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b02367a6-55c0-45aa-92b5-ae3ff799c988",
+              "leftValue": "={{ $json.employee_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "7617b575-9ac0-4644-a869-a0b7411d8c2d",
+              "leftValue": "={{ $json.feedback_text }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e642ed67-207d-4725-a842-d476c2e93ecc",
+      "name": "Kiểm tra tính hợp lệ dữ liệu",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        240,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8ddc6b3c-1b79-472b-97f2-0b4c33d534cf",
+              "name": "status",
+              "value": "INVALID_INPUT",
+              "type": "string"
+            },
+            {
+              "id": "d9bdb370-24c4-4915-8ad5-c2a9903a8505",
+              "name": "log_message",
+              "value": "Thiếu mã nhân viên hoặc nội dung phản hồi.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3d10ae7c-d623-49fc-be5c-5851c68f353a",
+      "name": "Cảnh báo dữ liệu không hợp lệ",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1dc9tZcB-9k8kokLt1ws_Cc_lLZmo0Qu9ttrNE7-yiJU"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "104"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Employee ID",
+              "lookupValue": "={{ $('Chuẩn hóa dữ liệu tiếp nhận').first().json.employee_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f4bd0d17-97c8-490c-816b-280a1017f426",
+      "name": "Đọc hồ sơ từ Employees",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        460,
+        -80
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "VYPA6NSRnBtQZT9l",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "6b5a0cba-632c-428d-8948-21d8029df85e",
+              "leftValue": "={{ $json['Employee ID'] || $json.employee_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c15e2bd4-7233-4cd6-9ba1-f8e79410e1fa",
+      "name": "Kiểm tra hồ sơ nhân viên",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        680,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1dc9tZcB-9k8kokLt1ws_Cc_lLZmo0Qu9ttrNE7-yiJU"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "112"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Log ID": "={{ 'WF3-'+$execution.id+'-noEmp-WARN' }}",
+            "Workflow": "WF3_FeedbackPerformance",
+            "Entity ID": "={{ $('Chuẩn hóa dữ liệu tiếp nhận').first().json.employee_id }}",
+            "Event": "employee_not_found",
+            "status": "WARN",
+            "Logged At": "={{ $now.toISO() }}",
+            "Execution ID": "={{ String($execution.id) }}",
+            "Message": "={{ 'Không tìm thấy hồ sơ nhân viên ' + $('Chuẩn hóa dữ liệu tiếp nhận').first().json.employee_id + ' trong bảng Employees.' }}"
+          },
+          "schema": [
+            {
+              "id": "Log ID",
+              "displayName": "Log ID",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Workflow",
+              "displayName": "Workflow",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Entity ID",
+              "displayName": "Entity ID",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Event",
+              "displayName": "Event",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Logged At",
+              "displayName": "Logged At",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Execution ID",
+              "displayName": "Execution ID",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Message",
+              "displayName": "Message",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "id": "f3791d40-f6cc-42ac-8b1c-89fa9c7533b7",
+      "name": "Ghi nhật ký · Không tìm thấy nhân viên",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        680,
+        140
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "VYPA6NSRnBtQZT9l",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1dc9tZcB-9k8kokLt1ws_Cc_lLZmo0Qu9ttrNE7-yiJU"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "109"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Employee ID",
+              "lookupValue": "={{ $('Chuẩn hóa dữ liệu tiếp nhận').first().json.employee_id }}"
+            },
+            {
+              "lookupColumn": "Period",
+              "lookupValue": "={{ $('Chuẩn hóa dữ liệu tiếp nhận').first().json.period }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9f1ad118-14a2-4170-9716-b4cc6b04bc6f",
+      "name": "Đọc dữ liệu KPI từ bảng KPI",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        900,
+        -80
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "VYPA6NSRnBtQZT9l",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5178a94d-a233-4e05-a79f-fa9e79112791",
+              "leftValue": "={{ $json['KPI ID'] || $json.kpi_id || $json['Target'] || $json.target }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a8e84a69-d634-4079-9940-89a725067a5e",
+      "name": "Kiểm tra dữ liệu KPI",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// =========================================================================\n// Module đối chiếu & tính toán chỉ số KPI: Tỷ lệ (%) = (Thực tế / Mục tiêu) * 100\n// Phụ trách: Trần Vĩnh Thịnh (thinhtv104)\n// =========================================================================\n\nconst kpi = $input.first().json;\nconst actual = parseFloat(kpi.Actual ?? kpi.actual) || 0;\nconst target = parseFloat(kpi.Target ?? kpi.target) || 1;\nconst percentage = Math.round((actual / target) * 100);\nlet kpi_status = 'Đạt kỳ vọng';\nif (percentage < 70) kpi_status = 'Cần cải thiện';\nelse if (percentage < 90) kpi_status = 'Tiệm cận mục tiêu';\nelse if (percentage >= 100) kpi_status = 'Vượt mục tiêu';\n\nreturn [{\n  json: {\n    ...kpi,\n    actual,\n    target,\n    kpi_score: percentage,\n    kpi_percentage: percentage + '%',\n    kpi_status,\n    has_kpi: true\n  }\n}];\n"
+      },
+      "id": "73a10a59-b2c1-4c28-9027-a57ca195cafd",
+      "name": "Tính toán tỷ lệ hoàn thành KPI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "65281eab-f321-4a01-b12e-0fcd12225b2d",
+              "name": "kpi_id",
+              "value": "KPI-NA",
+              "type": "string"
+            },
+            {
+              "id": "33d84e99-9f78-4499-b2bb-2abfe977eef9",
+              "name": "employee_id",
+              "value": "={{ $('Chuẩn hóa dữ liệu tiếp nhận').first().json.employee_id }}",
+              "type": "string"
+            },
+            {
+              "id": "b999976e-da24-4895-84ed-37d488e7ccda",
+              "name": "period",
+              "value": "={{ $('Chuẩn hóa dữ liệu tiếp nhận').first().json.period }}",
+              "type": "string"
+            },
+            {
+              "id": "c2c12f50-28e2-4c10-9019-00eff58ca7c1",
+              "name": "kpi_name",
+              "value": "Chưa có chỉ tiêu KPI",
+              "type": "string"
+            },
+            {
+              "id": "7c146e43-8e04-4d9e-9b53-24395a969022",
+              "name": "actual",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "663a8357-d13f-42f0-952d-9518ef5431c4",
+              "name": "target",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "2b6eea02-9ae8-4679-b042-5371198fd71a",
+              "name": "kpi_score",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "9e09af93-834e-4928-97b7-99d949c7d696",
+              "name": "kpi_percentage",
+              "value": "0%",
+              "type": "string"
+            },
+            {
+              "id": "70ec5c34-7224-4cbe-b3fe-c401755c6d68",
+              "name": "kpi_status",
+              "value": "Chưa có dữ liệu KPI",
+              "type": "string"
+            },
+            {
+              "id": "99f3df51-bf79-471c-9bf1-d57cb5ea4c69",
+              "name": "has_kpi",
+              "value": false,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "17a19d60-b81a-4b50-a1ca-3a8c09a61a89",
+      "name": "Gán mặc định khi thiếu KPI",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1340,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ 'NHÂN VIÊN: ' + ($('Đọc hồ sơ từ Employees').first().json['Full Name'] || $('Đọc hồ sơ từ Employees').first().json.full_name || '') + ' (' + $('Chuẩn hóa dữ liệu tiếp nhận').first().json.employee_id + ')\\nPHÒNG BAN: ' + ($('Đọc hồ sơ từ Employees').first().json['Department'] || $('Đọc hồ sơ từ Employees').first().json.department || '') + '\\nVỊ TRÍ: ' + ($('Đọc hồ sơ từ Employees').first().json['Job ID'] || $('Đọc hồ sơ từ Employees').first().json.job_title || '') + '\\nKỲ ĐÁNH GIÁ: ' + $('Chuẩn hóa dữ liệu tiếp nhận').first().json.period + '\\nKPI THỰC HIỆN: ' + $json.kpi_score + '% (Thực tế ' + $json.actual + '/' + $json.target + ' - ' + $json.kpi_status + ')\\nĐÁNH GIÁ HÀI LÒNG: ' + $('Chuẩn hóa dữ liệu tiếp nhận').first().json.satisfaction + '/5\\nÝ KIẾN PHẢN HỒI:\\n' + $('Chuẩn hóa dữ liệu tiếp nhận').first().json.feedback_text + '\\nNHU CẦU HỖ TRỢ: ' + ($('Chuẩn hóa dữ liệu tiếp nhận').first().json.need_support ? 'Có yêu cầu HR hỗ trợ' : 'Không yêu cầu') }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "Bạn là trợ lý HR AI của ABC Tech. Hãy phân tích phản hồi nhân viên và dữ liệu hiệu suất, trả về kết quả định dạng đúng 4 dòng sau (không thêm lời chào hay định dạng khác):\nTOPIC: [chọn 1 chủ đề ngắn gọn: Đào tạo & Hướng dẫn / Quy trình & Tài liệu / Khối lượng công việc / Môi trường làm việc / Khác]\nSUMMARY: [tóm tắt súc tích ý kiến trong 1 câu dưới 25 từ]\nACTION: [đề xuất 1 hành động cụ thể khả thi để HR hỗ trợ nhân viên giải quyết vấn đề dưới 30 từ]\nSENTIMENT: [Tích cực / Trung tính / Cần lưu ý]"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "id": "a641e7f1-fd91-4ffb-932d-b66da6c97617",
+      "name": "AI phân tích phản hồi & hiệu suất",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        1600,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 1000,
+          "reasoningEffort": "low",
+          "timeout": 120000
+        }
+      },
+      "id": "wf3-model",
+      "name": "AI Model - GPT-5 mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1600,
+        140
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0860c1d9-92a3-451e-8482-497a1f24ab85",
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "12480745-7311-40d4-b083-02d566640128",
+      "name": "Kiểm tra kết quả phân tích AI",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1840,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst rawText = String($input.first().json.text || '');\n\nlet topic = rawText.match(/TOPIC:\\s*([^\\n\\r]+)/i)?.[1]?.trim() || '';\nlet ai_summary = rawText.match(/SUMMARY:\\s*([^\\n\\r]+)/i)?.[1]?.trim() || '';\nlet suggested_action = rawText.match(/ACTION:\\s*([^\\n\\r]+)/i)?.[1]?.trim() || '';\nlet sentiment = rawText.match(/SENTIMENT:\\s*([^\\n\\r]+)/i)?.[1]?.trim() || 'Cần lưu ý';\n\nif (!topic) {\n  try {\n    const clean = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();\n    const parsed = JSON.parse(clean);\n    topic = parsed.topic;\n    ai_summary = parsed.ai_summary;\n    suggested_action = parsed.suggested_action;\n    sentiment = parsed.sentiment || 'Cần lưu ý';\n  } catch {}\n}\n\nlet lower = String(topic || '').toLowerCase();\nif (lower.includes('đào tạo') || lower.includes('hướng dẫn') || lower.includes('training')) topic = 'training';\nelse if (lower.includes('công cụ') || lower.includes('phần mềm') || lower.includes('thiết bị') || lower.includes('tool')) topic = 'tools';\nelse if (lower.includes('khối lượng') || lower.includes('quá tải') || lower.includes('lương') || lower.includes('workload')) topic = 'workload';\nelse if (lower.includes('quy trình') || lower.includes('tài liệu') || lower.includes('ca trực') || lower.includes('môi trường') || lower.includes('process')) topic = 'process';\nelse topic = 'process';\n\nif (!ai_summary) ai_summary = rawText.slice(0, 250) || 'Nhân viên cần hướng dẫn quy trình công việc.';\nif (!suggested_action) suggested_action = 'HR trao đổi với Quản lý để cập nhật tài liệu hướng dẫn và hỗ trợ nhân viên.';\n\nconst emp = $('Đọc hồ sơ từ Employees').first().json;\nconst full_name = emp['Full Name'] || emp.full_name || 'Nhân viên ABC Tech';\nconst department = emp['Department'] || emp.department || 'Vận hành';\nconst job_title = emp['Job ID'] || emp.job_title || 'Chuyên viên';\nconst emp_email_sheet = emp['Email'] || emp.email;\n\nconst inputData = $('Chuẩn hóa dữ liệu tiếp nhận').first().json;\nconst kpiData = $('Tính toán tỷ lệ hoàn thành KPI').first()?.json || $('Gán mặc định khi thiếu KPI').first()?.json || {};\n\nconst feedback_id = 'FB-' + inputData.employee_id + '-' + $execution.id;\nconst employee_email = inputData.employee_email || emp_email_sheet || 'thinhzxc124@gmail.com';\nconst hr_email = inputData.hr_email || 'whateverholding246@gmail.com';\n\nreturn [{\n  json: {\n    feedback_id,\n    employee_id: inputData.employee_id,\n    full_name,\n    email: employee_email,\n    employee_email,\n    hr_email,\n    demo_email: employee_email,\n    department,\n    job_title,\n    period: inputData.period,\n    satisfaction: inputData.satisfaction,\n    feedback_text: inputData.feedback_text,\n    need_support: inputData.need_support,\n    kpi_score: kpiData.kpi_score ?? 0,\n    kpi_percentage: kpiData.kpi_percentage ?? '0%',\n    actual: kpiData.actual ?? 0,\n    target: kpiData.target ?? 0,\n    kpi_status: kpiData.kpi_status ?? 'Chưa có KPI',\n    has_kpi: kpiData.has_kpi ?? false,\n    topic,\n    ai_summary,\n    suggested_action,\n    sentiment,\n    created_at: new Date().toISOString()\n  }\n}];\n"
+      },
+      "id": "5f23aea8-6f63-4b14-aa43-2a747f219c6d",
+      "name": "Chuẩn hóa kết quả phân tích AI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2060,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1dc9tZcB-9k8kokLt1ws_Cc_lLZmo0Qu9ttrNE7-yiJU"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "110"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Feedback ID": "={{ $json.feedback_id }}",
+            "Employee ID": "={{ $json.employee_id }}",
+            "Period": "={{ $json.period }}",
+            "Submitted At": "={{ $now.setZone('Asia/Ho_Chi_Minh').toFormat('dd/MM/yyyy') }}",
+            "Satisfaction": "={{ $json.satisfaction }}",
+            "Feedback Text": "={{ $json.feedback_text }}",
+            "Support Requested": "={{ $json.need_support ? 'TRUE' : 'FALSE' }}",
+            "Topic": "={{ $json.topic }}",
+            "AI Summary": "={{ $json.ai_summary }}",
+            "Suggested Action": "={{ $json.suggested_action }}",
+            "status": "={{ $json.need_support ? 'pending_review' : 'reviewed' }}"
+          },
+          "schema": [
+            {
+              "id": "Feedback ID",
+              "displayName": "Feedback ID",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Employee ID",
+              "displayName": "Employee ID",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Period",
+              "displayName": "Period",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Submitted At",
+              "displayName": "Submitted At",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Satisfaction",
+              "displayName": "Satisfaction",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Feedback Text",
+              "displayName": "Feedback Text",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Support Requested",
+              "displayName": "Support Requested",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Topic",
+              "displayName": "Topic",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "AI Summary",
+              "displayName": "AI Summary",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Suggested Action",
+              "displayName": "Suggested Action",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "id": "32e4a6a8-c920-4afc-a0ac-5f79d7c34d6c",
+      "name": "Lưu kết quả vào bảng Feedback",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2320,
+        -80
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "VYPA6NSRnBtQZT9l",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1dc9tZcB-9k8kokLt1ws_Cc_lLZmo0Qu9ttrNE7-yiJU"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "101"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Report ID": "={{ 'RPT-' + $('Chuẩn hóa kết quả phân tích AI').first().json.employee_id + '-' + $execution.id }}",
+            "Employee ID": "={{ $('Chuẩn hóa kết quả phân tích AI').first().json.employee_id }}",
+            "Full Name": "={{ $('Chuẩn hóa kết quả phân tích AI').first().json.full_name }}",
+            "Period": "={{ $('Chuẩn hóa kết quả phân tích AI').first().json.period }}",
+            "Target": "={{ $('Chuẩn hóa kết quả phân tích AI').first().json.target }}",
+            "Actual": "={{ $('Chuẩn hóa kết quả phân tích AI').first().json.actual }}",
+            "KPI Rate": "={{ $('Chuẩn hóa kết quả phân tích AI').first().json.kpi_score + '%' }}",
+            "Satisfaction": "={{ $('Chuẩn hóa kết quả phân tích AI').first().json.satisfaction }}",
+            "Support Requested": "={{ $('Chuẩn hóa kết quả phân tích AI').first().json.need_support ? 'TRUE' : 'FALSE' }}",
+            "KPI Data Status": "={{ $('Chuẩn hóa kết quả phân tích AI').first().json.kpi_status }}",
+            "Metric Name": "={{ 'KPI & Phản hồi kỳ ' + $('Chuẩn hóa kết quả phân tích AI').first().json.period + ' — ' + $('Chuẩn hóa kết quả phân tích AI').first().json.full_name }}",
+            "Unit": "%"
+          },
+          "schema": [
+            {
+              "id": "Report ID",
+              "displayName": "Report ID",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Employee ID",
+              "displayName": "Employee ID",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Full Name",
+              "displayName": "Full Name",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Period",
+              "displayName": "Period",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Target",
+              "displayName": "Target",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Actual",
+              "displayName": "Actual",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "KPI Rate",
+              "displayName": "KPI Rate",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Satisfaction",
+              "displayName": "Satisfaction",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Support Requested",
+              "displayName": "Support Requested",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "KPI Data Status",
+              "displayName": "KPI Data Status",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Metric Name",
+              "displayName": "Metric Name",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Unit",
+              "displayName": "Unit",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "id": "6541174f-116e-4048-a819-21a6801e8f0a",
+      "name": "Cập nhật dữ liệu vào bảng Reports",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2540,
+        -80
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "VYPA6NSRnBtQZT9l",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "15237a56-1ec0-4e5d-afbf-a863808b9f01",
+              "name": "preview_summary",
+              "value": "={{ 'Nhân viên: ' + $('Chuẩn hóa kết quả phân tích AI').first().json.full_name + ' | KPI: ' + $('Chuẩn hóa kết quả phân tích AI').first().json.kpi_score + '% (' + $('Chuẩn hóa kết quả phân tích AI').first().json.kpi_status + ') | Hài lòng: ' + $('Chuẩn hóa kết quả phân tích AI').first().json.satisfaction + '/5 | Chủ đề: ' + $('Chuẩn hóa kết quả phân tích AI').first().json.topic }}",
+              "type": "string"
+            },
+            {
+              "id": "a3031915-bfb8-4dc9-8384-954bcd295bf8",
+              "name": "ai_action",
+              "value": "={{ $('Chuẩn hóa kết quả phân tích AI').first().json.suggested_action }}",
+              "type": "string"
+            },
+            {
+              "id": "6f59d0d2-bce6-4e4f-bcd4-4dbe2ac6c770",
+              "name": "need_support",
+              "value": "={{ $('Chuẩn hóa kết quả phân tích AI').first().json.need_support }}",
+              "type": "boolean"
+            },
+            {
+              "id": "dfd4bc0a-d7a1-499a-9540-57a0c70857ca",
+              "name": "employee_email",
+              "value": "={{ $('Chuẩn hóa kết quả phân tích AI').first().json.employee_email }}",
+              "type": "string"
+            },
+            {
+              "id": "2d59a566-d98a-4848-bcc3-caf0c7b05ea4",
+              "name": "hr_email",
+              "value": "={{ $('Chuẩn hóa kết quả phân tích AI').first().json.hr_email }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ecaf5ed4-9bf7-4806-b5b5-19dae9fee1ce",
+      "name": "Tổng hợp bản xem trước đánh giá",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2760,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "1eec87ec-fe98-4efb-b58d-dddec57a01e2",
+              "leftValue": "={{ $('Chuẩn hóa kết quả phân tích AI').first().json.need_support }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "121882bd-fde6-40b3-b2a6-30fc4850cd38",
+              "leftValue": "={{ $('Chuẩn hóa kết quả phân tích AI').first().json.satisfaction }}",
+              "rightValue": 3,
+              "operator": {
+                "type": "number",
+                "operation": "lte"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "13fbc00f-a93c-410b-9553-01392909136b",
+      "name": "Kiểm tra nhu cầu hỗ trợ của nhân viên",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3000,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1dc9tZcB-9k8kokLt1ws_Cc_lLZmo0Qu9ttrNE7-yiJU"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "112"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Log ID": "={{ 'WF3-'+$execution.id+'-noSupportNeeded-INFO' }}",
+            "Workflow": "WF3_FeedbackPerformance",
+            "Entity ID": "={{ $('Chuẩn hóa kết quả phân tích AI').first().json.employee_id }}",
+            "Event": "routine_feedback_recorded",
+            "status": "INFO",
+            "Logged At": "={{ $now.toISO() }}",
+            "Execution ID": "={{ String($execution.id) }}",
+            "Message": "={{ 'Phản hồi bình thường, nhân viên không yêu cầu hỗ trợ và mức độ hài lòng tốt (' + $('Chuẩn hóa kết quả phân tích AI').first().json.satisfaction + '/5).' }}"
+          },
+          "schema": [
+            {
+              "id": "Log ID",
+              "displayName": "Log ID",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Workflow",
+              "displayName": "Workflow",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Entity ID",
+              "displayName": "Entity ID",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Event",
+              "displayName": "Event",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Logged At",
+              "displayName": "Logged At",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Execution ID",
+              "displayName": "Execution ID",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Message",
+              "displayName": "Message",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "id": "b2f368f5-1316-483f-aa07-87148a0b4541",
+      "name": "Ghi nhật ký · Không cần hành động hỗ trợ",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        3000,
+        140
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "VYPA6NSRnBtQZT9l",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst esc = s => String(s ?? '').replace(/[&<>\"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst c = $('Chuẩn hóa kết quả phân tích AI').first().json;\n\nconst kpiColor = c.kpi_score >= 90 ? '#27ae60' : (c.kpi_score >= 70 ? '#2980b9' : '#e74c3c');\n\nconst hr_html = `\n<div style=\"font-family:Arial,sans-serif;color:#243447;line-height:1.65;max-width:680px;margin:auto;border:1px solid #e1e8ed;border-radius:8px;overflow:hidden\">\n  <div style=\"background:#142f4c;color:white;padding:22px 28px\">\n    <b style=\"font-size:22px\">ABC Tech</b><br>\n    Phòng Quản trị Nhân sự &amp; Hiệu suất\n  </div>\n  <div style=\"padding:24px 28px;background:#ffffff\">\n    <h2 style=\"font-size:20px;color:#142f4c;margin-top:0\">Đề nghị xem xét &amp; phê duyệt hỗ trợ nhân viên</h2>\n    <p>Kính gửi Bộ phận Quản trị Nhân sự,</p>\n    <p>Hệ thống AI Automation vừa tiếp nhận phản hồi định kỳ và đối chiếu chỉ số KPI của nhân sự với thông tin sau:</p>\n    \n    <table style=\"width:100%;border-collapse:collapse;margin:16px 0;font-size:14px\">\n      <tr style=\"background:#f5f8fa\"><td style=\"padding:8px 12px;border:1px solid #e1e8ed;font-weight:bold;width:35%\">Nhân viên:</td><td style=\"padding:8px 12px;border:1px solid #e1e8ed\">${esc(c.full_name)} (${esc(c.employee_id)}) — ${esc(c.department)}</td></tr>\n      <tr><td style=\"padding:8px 12px;border:1px solid #e1e8ed;font-weight:bold\">Vị trí công việc:</td><td style=\"padding:8px 12px;border:1px solid #e1e8ed\">${esc(c.job_title)}</td></tr>\n      <tr style=\"background:#f5f8fa\"><td style=\"padding:8px 12px;border:1px solid #e1e8ed;font-weight:bold\">Kỳ đánh giá:</td><td style=\"padding:8px 12px;border:1px solid #e1e8ed\">${esc(c.period)}</td></tr>\n      <tr><td style=\"padding:8px 12px;border:1px solid #e1e8ed;font-weight:bold\">Kết quả KPI:</td><td style=\"padding:8px 12px;border:1px solid #e1e8ed\"><b style=\"color:${kpiColor}\">${c.kpi_score}%</b> (${c.actual}/${c.target} — ${esc(c.kpi_status)})</td></tr>\n      <tr style=\"background:#f5f8fa\"><td style=\"padding:8px 12px;border:1px solid #e1e8ed;font-weight:bold\">Mức độ hài lòng:</td><td style=\"padding:8px 12px;border:1px solid #e1e8ed\"><b>${c.satisfaction}/5 sao</b></td></tr>\n      <tr><td style=\"padding:8px 12px;border:1px solid #e1e8ed;font-weight:bold\">Ý kiến phản hồi:</td><td style=\"padding:8px 12px;border:1px solid #e1e8ed\"><i>\"${esc(c.feedback_text)}\"</i></td></tr>\n    </table>\n\n    <div style=\"background:#eef6fc;border-left:4px solid #142f4c;padding:14px 18px;margin:16px 0;border-radius:0 4px 4px 0\">\n      <b style=\"color:#142f4c;font-size:15px\">Phân tích &amp; Đề xuất từ AI (GPT-5 mini):</b><br>\n      <p style=\"margin:6px 0\"><b>Chủ đề:</b> ${esc(c.topic)} (${esc(c.sentiment)})</p>\n      <p style=\"margin:6px 0\"><b>Tóm tắt vấn đề:</b> ${esc(c.ai_summary)}</p>\n      <p style=\"margin:6px 0\"><b>Hành động đề xuất:</b> <span style=\"color:#142f4c;font-weight:bold\">${esc(c.suggested_action)}</span></p>\n    </div>\n\n    <p>Vui lòng lựa chọn phê duyệt bên dưới trong vòng <b>72 giờ</b>. Khi HR phê duyệt, hệ thống sẽ tự động khởi tạo nhiệm vụ theo dõi vào bảng <b>Actions</b> và gửi email phản hồi lộ trình hỗ trợ cho nhân viên.</p>\n\n    <p style=\"margin-top:28px;padding-top:16px;border-top:1px solid #eaeaea;font-size:13px;color:#657786\">\n      Trân trọng,<br>\n      <b>Bộ phận Quản trị Nhân sự &amp; Hiệu suất — ABC Tech</b><br>\n      <a href=\"mailto:whateverholding246@gmail.com\" style=\"color:#142f4c\">whateverholding246@gmail.com</a>\n    </p>\n  </div>\n</div>\n`;\n\nreturn [{\n  json: {\n    ...c,\n    hr_email: c.hr_email || 'whateverholding246@gmail.com',\n    mail_subject: `[ABC Tech | HR] Đề nghị phê duyệt hỗ trợ nhân viên — ${c.full_name} (${c.employee_id})`,\n    hr_html\n  }\n}];\n"
+      },
+      "id": "477008e7-e97f-410b-ac5a-e2bc31b2b27b",
+      "name": "Soạn email gửi HR phê duyệt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3260,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "sendTo": "={{ $json.hr_email }}",
+        "subject": "={{ $json.mail_subject }}",
+        "message": "={{ $json.hr_html }}",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double",
+            "approveLabel": "Duyệt kế hoạch hỗ trợ",
+            "disapproveLabel": "Chưa duyệt / Từ chối"
+          }
+        },
+        "options": {
+          "limitWaitTime": {
+            "values": {
+              "resumeAmount": 30,
+              "resumeUnit": "minutes"
+            }
+          },
+          "appendAttribution": false
+        }
+      },
+      "id": "e76ac1b8-1dcb-408b-9de9-51121d6e513a",
+      "name": "HR xem xét và phê duyệt hỗ trợ",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        3500,
+        -80
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "WlOPKKVwutckEHgq",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "36c8269c-c234-4de7-8612-69259ae31542",
+              "leftValue": "={{ Boolean($json.approved === true || $json.approved === 'true' || $json.data?.approved === true || $json.action === 'approve') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e269d63c-d0f4-4768-a0b3-41ac8c95b788",
+      "name": "Kiểm tra quyết định của HR",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3740,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1dc9tZcB-9k8kokLt1ws_Cc_lLZmo0Qu9ttrNE7-yiJU"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "111"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Action ID": "={{ 'ACT-' + $('Chuẩn hóa kết quả phân tích AI').first().json.employee_id + '-' + $execution.id }}",
+            "Employee ID": "={{ $('Chuẩn hóa kết quả phân tích AI').first().json.employee_id }}",
+            "Feedback ID": "={{ $('Chuẩn hóa kết quả phân tích AI').first().json.feedback_id }}",
+            "Action Title": "={{ $('Chuẩn hóa kết quả phân tích AI').first().json.suggested_action }}",
+            "Owner Role": "HR",
+            "Due Date": "={{ $now.setZone('Asia/Ho_Chi_Minh').plus({ days: 3 }).toFormat('dd/MM/yyyy') }}",
+            "status": "in_progress",
+            "HR Approved": "TRUE",
+            "Completed At": "",
+            "Note": "Tự động tạo từ Workflow 3 sau khi HR phê duyệt."
+          },
+          "schema": [
+            {
+              "id": "Action ID",
+              "displayName": "Action ID",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Employee ID",
+              "displayName": "Employee ID",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Feedback ID",
+              "displayName": "Feedback ID",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Action Title",
+              "displayName": "Action Title",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Owner Role",
+              "displayName": "Owner Role",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Due Date",
+              "displayName": "Due Date",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "HR Approved",
+              "displayName": "HR Approved",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Completed At",
+              "displayName": "Completed At",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Note",
+              "displayName": "Note",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "id": "e94ed381-36ff-44ed-8f0e-575f7fe0ca4f",
+      "name": "Tạo hành động hỗ trợ trong Actions",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        3980,
+        -180
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "VYPA6NSRnBtQZT9l",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst esc = s => String(s ?? '').replace(/[&<>\"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst c = $('Chuẩn hóa kết quả phân tích AI').first().json;\n\nconst emp_html = `\n<div style=\"font-family:Arial,sans-serif;color:#243447;line-height:1.65;max-width:680px;margin:auto;border:1px solid #e1e8ed;border-radius:8px;overflow:hidden\">\n  <div style=\"background:#142f4c;color:white;padding:22px 28px\">\n    <b style=\"font-size:22px\">ABC Tech</b><br>\n    Phòng Quản trị Nhân sự &amp; Hiệu suất\n  </div>\n  <div style=\"padding:24px 28px;background:#ffffff\">\n    <h2 style=\"font-size:20px;color:#142f4c;margin-top:0\">Xác nhận kế hoạch hỗ trợ định kỳ — Kỳ ${esc(c.period)}</h2>\n    <p>Chào bạn <b>${esc(c.full_name)}</b>,</p>\n    <p>Phòng Quản trị Nhân sự ABC Tech đã tiếp nhận và xem xét ý kiến phản hồi của bạn trong kỳ đánh giá <b>${esc(c.period)}</b>:</p>\n    \n    <blockquote style=\"margin:16px 0;padding:12px 16px;background:#f8f9fa;border-left:4px solid #142f4c;font-style:italic\">\n      \"${esc(c.feedback_text)}\"\n    </blockquote>\n\n    <p><b>Kế hoạch hỗ trợ đã được HR phê duyệt:</b></p>\n    <div style=\"background:#f0fff4;border:1px solid #c6f6d5;padding:14px 18px;border-radius:6px;margin:16px 0\">\n      <b style=\"color:#22543d\">Hành động hỗ trợ:</b> ${esc(c.suggested_action)}<br>\n      <span style=\"font-size:13px;color:#276749\">Đầu việc theo dõi đã được khởi tạo trong hệ thống nội bộ và phân công phụ trách xử lý.</span>\n    </div>\n\n    <p>Nếu bạn có thêm trao đổi hoặc cần hỗ trợ khẩn cấp, vui lòng phản hồi trực tiếp qua email này.</p>\n\n    <p style=\"margin-top:28px;padding-top:16px;border-top:1px solid #eaeaea;font-size:13px;color:#657786\">\n      Trân trọng,<br>\n      <b>Bộ phận Quản trị Nhân sự &amp; Hiệu suất — ABC Tech</b><br>\n      <a href=\"mailto:whateverholding246@gmail.com\" style=\"color:#142f4c\">whateverholding246@gmail.com</a>\n    </p>\n  </div>\n</div>\n`;\n\nreturn [{\n  json: {\n    ...c,\n    emp_email: c.employee_email || c.email || 'thinhzxc124@gmail.com',\n    mail_subject: `[ABC Tech] Kế hoạch hỗ trợ ý kiến phản hồi kỳ ${c.period} — ${c.full_name}`,\n    emp_html\n  }\n}];\n"
+      },
+      "id": "f504dcce-0ed3-4b27-aaa2-1aac8e0bfc2b",
+      "name": "Soạn email thông báo nhân viên",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4200,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.emp_email }}",
+        "subject": "={{ $json.mail_subject }}",
+        "message": "={{ $json.emp_html }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "ABC Tech | Quản trị Nhân sự & Hiệu suất"
+        }
+      },
+      "id": "fe5f6958-9393-4f80-946d-2dbce16554ef",
+      "name": "Gửi thông báo hỗ trợ cho nhân viên",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        4420,
+        -180
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "WlOPKKVwutckEHgq",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1dc9tZcB-9k8kokLt1ws_Cc_lLZmo0Qu9ttrNE7-yiJU"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "112"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Log ID": "={{ 'WF3-'+$execution.id+'-approved-INFO' }}",
+            "Workflow": "WF3_FeedbackPerformance",
+            "Entity ID": "={{ $('Chuẩn hóa kết quả phân tích AI').first().json.employee_id }}",
+            "Event": "action_created_and_notified",
+            "status": "SUCCESS",
+            "Logged At": "={{ $now.toISO() }}",
+            "Execution ID": "={{ String($execution.id) }}",
+            "Message": "={{ 'HR đã phê duyệt. Đã tạo việc trong Actions và gửi email thông báo cho nhân viên: ' + $('Chuẩn hóa kết quả phân tích AI').first().json.suggested_action }}"
+          },
+          "schema": [
+            {
+              "id": "Log ID",
+              "displayName": "Log ID",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Workflow",
+              "displayName": "Workflow",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Entity ID",
+              "displayName": "Entity ID",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Event",
+              "displayName": "Event",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Logged At",
+              "displayName": "Logged At",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Execution ID",
+              "displayName": "Execution ID",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Message",
+              "displayName": "Message",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "id": "398acf84-4efc-4717-97e8-1242445c3590",
+      "name": "Ghi nhật ký hoàn tất quy trình",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        4640,
+        -180
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "VYPA6NSRnBtQZT9l",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1dc9tZcB-9k8kokLt1ws_Cc_lLZmo0Qu9ttrNE7-yiJU"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "112"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Log ID": "={{ 'WF3-'+$execution.id+'-disapproved-WARN' }}",
+            "Workflow": "WF3_FeedbackPerformance",
+            "Entity ID": "={{ $('Chuẩn hóa kết quả phân tích AI').first().json.employee_id }}",
+            "Event": "hr_disapproved_or_timeout",
+            "status": "WARN",
+            "Logged At": "={{ $now.toISO() }}",
+            "Execution ID": "={{ String($execution.id) }}",
+            "Message": "={{ 'HR chưa duyệt hoặc từ chối yêu cầu hỗ trợ của nhân viên ' + $('Chuẩn hóa kết quả phân tích AI').first().json.full_name }}"
+          },
+          "schema": [
+            {
+              "id": "Log ID",
+              "displayName": "Log ID",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Workflow",
+              "displayName": "Workflow",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Entity ID",
+              "displayName": "Entity ID",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Event",
+              "displayName": "Event",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Logged At",
+              "displayName": "Logged At",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Execution ID",
+              "displayName": "Execution ID",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Message",
+              "displayName": "Message",
+              "required": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "id": "414ec4c4-55f9-4d43-b3c9-b66d1cc5d579",
+      "name": "Ghi nhật ký · HR từ chối hoặc quá hạn",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        3980,
+        40
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "VYPA6NSRnBtQZT9l",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## ABC Tech | Workflow 3 · Phản hồi & Báo cáo hiệu suất\n**Dữ liệu liên kết đồng bộ:**\n- Đọc `Employees` (104) & `KPI` (109).\n- Ghi `Feedback` (110) & `Actions` (111).\n- Cập nhật nguồn `Reports` (101) để tự động làm mới `Dashboard`.\n- Ghi nhật ký chuẩn hóa vào `Logs` (112) với mã `WF3-...`.\n\n**Phương thức khởi chạy:**\n1. **Kiểm thử 1-Click (Khuyên dùng):** Bấm nút màu cam `Execute workflow` với dữ liệu mẫu EMP-003 kỳ 2026-W40 (đúng tình huống Kiểm thử 3 trong tab HuongDan).\n2. **Biểu mẫu Web Form:** Mở tab trình duyệt truy cập `/form/abc-tech-feedback` gửi ý kiến trực tuyến.\n3. Khi nhân viên yêu cầu hỗ trợ: Hệ thống tự động gửi email tương tác xin HR duyệt qua Gmail và tự động tạo việc vào bảng Actions.",
+        "height": 420,
+        "width": 560
+      },
+      "id": "e8c06b8c-2785-4f29-bb01-d9c8ee7bd293",
+      "name": "Sticky Note · Hướng dẫn vận hành WF3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -420,
+        240
+      ]
+    }
+  ],
+  "connections": {
+    "Kích hoạt thử nghiệm thủ công": {
+      "main": [
+        [
+          {
+            "node": "Cấu hình tham số kiểm thử",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cấu hình tham số kiểm thử": {
+      "main": [
+        [
+          {
+            "node": "Chuẩn hóa dữ liệu tiếp nhận",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Biểu mẫu phản hồi nhân viên": {
+      "main": [
+        [
+          {
+            "node": "Chuẩn hóa dữ liệu tiếp nhận",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chuẩn hóa dữ liệu tiếp nhận": {
+      "main": [
+        [
+          {
+            "node": "Kiểm tra tính hợp lệ dữ liệu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kiểm tra tính hợp lệ dữ liệu": {
+      "main": [
+        [
+          {
+            "node": "Đọc hồ sơ từ Employees",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cảnh báo dữ liệu không hợp lệ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đọc hồ sơ từ Employees": {
+      "main": [
+        [
+          {
+            "node": "Kiểm tra hồ sơ nhân viên",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kiểm tra hồ sơ nhân viên": {
+      "main": [
+        [
+          {
+            "node": "Đọc dữ liệu KPI từ bảng KPI",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ghi nhật ký · Không tìm thấy nhân viên",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đọc dữ liệu KPI từ bảng KPI": {
+      "main": [
+        [
+          {
+            "node": "Kiểm tra dữ liệu KPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kiểm tra dữ liệu KPI": {
+      "main": [
+        [
+          {
+            "node": "Tính toán tỷ lệ hoàn thành KPI",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gán mặc định khi thiếu KPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tính toán tỷ lệ hoàn thành KPI": {
+      "main": [
+        [
+          {
+            "node": "AI phân tích phản hồi & hiệu suất",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gán mặc định khi thiếu KPI": {
+      "main": [
+        [
+          {
+            "node": "AI phân tích phản hồi & hiệu suất",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Model - GPT-5 mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI phân tích phản hồi & hiệu suất",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI phân tích phản hồi & hiệu suất": {
+      "main": [
+        [
+          {
+            "node": "Kiểm tra kết quả phân tích AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kiểm tra kết quả phân tích AI": {
+      "main": [
+        [
+          {
+            "node": "Chuẩn hóa kết quả phân tích AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chuẩn hóa kết quả phân tích AI": {
+      "main": [
+        [
+          {
+            "node": "Lưu kết quả vào bảng Feedback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lưu kết quả vào bảng Feedback": {
+      "main": [
+        [
+          {
+            "node": "Cập nhật dữ liệu vào bảng Reports",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cập nhật dữ liệu vào bảng Reports": {
+      "main": [
+        [
+          {
+            "node": "Tổng hợp bản xem trước đánh giá",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tổng hợp bản xem trước đánh giá": {
+      "main": [
+        [
+          {
+            "node": "Kiểm tra nhu cầu hỗ trợ của nhân viên",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kiểm tra nhu cầu hỗ trợ của nhân viên": {
+      "main": [
+        [
+          {
+            "node": "Soạn email gửi HR phê duyệt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ghi nhật ký · Không cần hành động hỗ trợ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Soạn email gửi HR phê duyệt": {
+      "main": [
+        [
+          {
+            "node": "HR xem xét và phê duyệt hỗ trợ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HR xem xét và phê duyệt hỗ trợ": {
+      "main": [
+        [
+          {
+            "node": "Kiểm tra quyết định của HR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kiểm tra quyết định của HR": {
+      "main": [
+        [
+          {
+            "node": "Tạo hành động hỗ trợ trong Actions",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ghi nhật ký · HR từ chối hoặc quá hạn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tạo hành động hỗ trợ trong Actions": {
+      "main": [
+        [
+          {
+            "node": "Soạn email thông báo nhân viên",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Soạn email thông báo nhân viên": {
+      "main": [
+        [
+          {
+            "node": "Gửi thông báo hỗ trợ cho nhân viên",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gửi thông báo hỗ trợ cho nhân viên": {
+      "main": [
+        [
+          {
+            "node": "Ghi nhật ký hoàn tất quy trình",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "nodeGroups": [
+    {
+      "id": "4e6f02fa-d63a-49f5-85ae-af175363288d",
+      "name": "01 · Tiếp nhận phản hồi & KPI",
+      "nodeIds": [
+        "1a199c7a-8936-4f50-aa8d-754657094161",
+        "ac34470d-0f3d-416c-bf22-baa8f2756475",
+        "8906cd7b-59ec-41a9-9f9c-172ca9438053",
+        "9e204fc8-555a-415b-8f76-6d8d6c976571",
+        "e642ed67-207d-4725-a842-d476c2e93ecc",
+        "3d10ae7c-d623-49fc-be5c-5851c68f353a",
+        "f4bd0d17-97c8-490c-816b-280a1017f426",
+        "c15e2bd4-7233-4cd6-9ba1-f8e79410e1fa",
+        "f3791d40-f6cc-42ac-8b1c-89fa9c7533b7",
+        "9f1ad118-14a2-4170-9716-b4cc6b04bc6f",
+        "a8e84a69-d634-4079-9940-89a725067a5e",
+        "73a10a59-b2c1-4c28-9027-a57ca195cafd",
+        "17a19d60-b81a-4b50-a1ca-3a8c09a61a89"
+      ],
+      "description": "Tiếp nhận khảo sát qua biểu mẫu hoặc kích hoạt thử nghiệm, kiểm tra thông tin nhân viên và đối chiếu dữ liệu KPI."
+    },
+    {
+      "id": "ba6b7d45-8e54-40d9-91e9-2c06ec4d0f3c",
+      "name": "02 · AI phân tích & Trích xuất",
+      "nodeIds": [
+        "a641e7f1-fd91-4ffb-932d-b66da6c97617",
+        "wf3-model",
+        "12480745-7311-40d4-b083-02d566640128",
+        "5f23aea8-6f63-4b14-aa43-2a747f219c6d"
+      ],
+      "description": "Sử dụng GPT-5 mini phân tích ý kiến phản hồi, nhận diện chủ đề, đánh giá cảm xúc và đề xuất giải pháp."
+    },
+    {
+      "id": "c074d912-d25f-4e2f-b67f-9220ff4cf3f3",
+      "name": "03 · Cập nhật báo cáo & Dashboard",
+      "nodeIds": [
+        "32e4a6a8-c920-4afc-a0ac-5f79d7c34d6c",
+        "6541174f-116e-4048-a819-21a6801e8f0a",
+        "ecaf5ed4-9bf7-4806-b5b5-19dae9fee1ce"
+      ],
+      "description": "Lưu dữ liệu vào bảng Feedback, cập nhật số liệu bảng Reports để tự động làm mới biểu đồ Dashboard."
+    },
+    {
+      "id": "614578e7-d281-4da8-be47-39a8b2e14412",
+      "name": "04 · HR duyệt & Phân công hỗ trợ",
+      "nodeIds": [
+        "13fbc00f-a93c-410b-9553-01392909136b",
+        "b2f368f5-1316-483f-aa07-87148a0b4541",
+        "477008e7-e97f-410b-ac5a-e2bc31b2b27b",
+        "e76ac1b8-1dcb-408b-9de9-51121d6e513a",
+        "e269d63c-d0f4-4768-a0b3-41ac8c95b788",
+        "e94ed381-36ff-44ed-8f0e-575f7fe0ca4f",
+        "f504dcce-0ed3-4b27-aaa2-1aac8e0bfc2b",
+        "fe5f6958-9393-4f80-946d-2dbce16554ef",
+        "398acf84-4efc-4717-97e8-1242445c3590",
+        "414ec4c4-55f9-4d43-b3c9-b66d1cc5d579"
+      ],
+      "description": "Gửi email phê duyệt tương tác qua Gmail, tự động tạo việc trong bảng Actions và thông báo cho nhân viên."
+    }
+  ],
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  }
+}
