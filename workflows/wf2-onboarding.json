@@ -1,0 +1,2154 @@
+{
+  "name": "ABC Tech — Onboarding & Đào tạo (PostgreSQL)",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        2400,
+        128
+      ],
+      "id": "e391ac95-b3f6-41dd-867d-a97a5251044a",
+      "name": "Chạy thủ công A"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n  (select jsonb_object_agg(s.key, s.value) from public.app_settings s) as settings,\n  to_char(now() at time zone 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD') as today,\n  coalesce((\n    select jsonb_agg(jsonb_build_object(\n      'candidate_id', c.candidate_id, 'full_name', c.full_name, 'email', c.email, 'job_id', c.job_id,\n      'job_title', j.title, 'department', j.department, 'hiring_manager', j.hiring_manager, 'is_sample', c.is_sample,\n      'hired_on', (select to_char(max(e.occurred_at) at time zone 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD') from public.candidate_events e\n                    where e.candidate_id = c.candidate_id and e.to_status = 'hired'),\n      'email_taken', exists (select 1 from public.employees x where lower(x.email) = lower(c.email)),\n      'ai_summary', a.summary, 'skills_to_verify', a.skills_to_verify, 'declared_role', a.declared_role,\n      'templates', coalesce((select jsonb_agg(jsonb_build_object('template_id', t.template_id, 'task_name', t.task_name,\n                     'category', t.category, 'owner_role', t.owner_role, 'due_offset_days', t.due_offset_days, 'course_id', t.course_id)\n                     order by t.due_offset_days, t.template_id)\n                   from public.onboarding_templates t where t.job_id = c.job_id and t.status = 'active'), '[]'::jsonb)\n    ) order by c.candidate_id)\n    from public.candidates c\n    join public.jobs j on j.job_id = c.job_id\n    left join lateral (select y.summary, y.skills_to_verify, y.declared_role from public.cv_analyses y\n                       where y.candidate_id = c.candidate_id order by y.analyzed_at desc limit 1) a on true\n    where c.status = 'hired' and not exists (select 1 from public.employees x where x.candidate_id = c.candidate_id)\n  ), '[]'::jsonb) as pending,\n  coalesce((select jsonb_agg(jsonb_build_object('course_id', k.course_id, 'course_name', k.name, 'skill', k.skill, 'job_id', k.job_id,\n              'level', k.level, 'prerequisite_course_id', k.prerequisite_id, 'duration_hours', k.duration_hours,\n              'cost_vnd', k.cost_vnd, 'material_url', k.material_url) order by k.course_id)\n            from public.courses k where k.status = 'active'), '[]'::jsonb) as catalog;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        2640,
+        208
+      ],
+      "id": "6c33caf9-5eb6-4cf0-a156-bec10323c59c",
+      "name": "A · Đọc ứng viên chờ onboarding (PG)",
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        2400,
+        288
+      ],
+      "id": "0b8b5a67-d430-48f2-a86d-5d93e7538f21",
+      "name": "Lịch A — 08:00 hằng ngày"
+    },
+    {
+      "parameters": {
+        "jsCode": "function parseVN(v) { const m = String(v ?? '').match(/^(\\d{4})-(\\d{2})-(\\d{2})/); return m ? new Date(Date.UTC(+m[1], m[2] - 1, +m[3])) : null; }\nfunction pad2(n) { return String(n).padStart(2, '0'); }\nfunction fmtVN(d) { return d ? pad2(d.getUTCDate()) + '/' + pad2(d.getUTCMonth() + 1) + '/' + d.getUTCFullYear() : ''; }\nfunction fmtISO(d) { return d ? d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate()) : ''; }\nfunction addDays(d, n) { return new Date(d.getTime() + Number(n || 0) * 86400000); }\n\n// Ứng viên đã hired nhưng chưa có hồ sơ nhân viên (DB đã lọc): dựng sẵn checklist và lộ trình đào tạo.\nconst r = $input.first().json;\nconst today = parseVN(r.today);\nconst catalog = Array.isArray(r.catalog) ? r.catalog : [];\nconst byId = Object.fromEntries(catalog.map(c => [c.course_id, c]));\nconst skipped = [];\nconst packages = [];\n\nfor (const c of (Array.isArray(r.pending) ? r.pending : [])) {\n  if (!c.email) { skipped.push({ candidate_id: c.candidate_id, reason: 'thiếu email' }); continue; }\n  if (c.email_taken) { skipped.push({ candidate_id: c.candidate_id, reason: 'email đã thuộc một nhân viên khác' }); continue; }\n\n  // Ngày bắt đầu = ngày hồ sơ chuyển sang hired (lấy từ lịch sử trạng thái), như bản Sheets.\n  const start = parseVN(c.hired_on) || today;\n  const tasks = (c.templates || []).map(t => {\n    let due = addDays(start, t.due_offset_days);\n    // Việc chuẩn bị (offset âm) có thể rơi vào quá khứ: dồn hạn về hôm nay thay vì để quá hạn sẵn.\n    if (due.getTime() < today.getTime()) due = today;\n    return {\n      template_id: t.template_id, task_name: t.task_name, category: t.category,\n      owner_role: t.owner_role, due_date: fmtISO(due), course_id: t.course_id || '',\n    };\n  });\n\n  const seen = new Set();\n  const trainings = [];\n  for (const t of tasks) {\n    if (!t.course_id || seen.has(t.course_id)) continue;\n    seen.add(t.course_id);\n    const crs = byId[t.course_id] || {};\n    trainings.push({\n      course_id: t.course_id, source: 'template', assigned_on: fmtISO(start), due_on: t.due_date,\n      cost_vnd: crs.cost_vnd ?? '', note: 'Gán tự động theo checklist mẫu của vị trí.',\n      course_name: crs.course_name || '', material_url: crs.material_url || '',\n    });\n  }\n\n  const skills = Array.isArray(c.skills_to_verify) ? c.skills_to_verify.join('; ') : '';\n  const ai_prompt = [\n    'Bạn là trợ lý nhân sự của công ty ABC Tech. Nhiệm vụ: gợi ý lộ trình đào tạo cho nhân viên mới.',\n    '',\n    'THÔNG TIN NHÂN VIÊN:',\n    '- Họ tên: ' + (c.full_name || ''),\n    '- Vị trí: ' + (c.job_title || c.declared_role || ''),\n    '- Phòng ban: ' + (c.department || ''),\n    '- Kỹ năng cần xác minh: ' + (skills || 'không ghi'),\n    '- Tóm tắt CV: ' + String(c.ai_summary || 'không ghi').slice(0, 600),\n    '',\n    'DANH MỤC KHÓA HỌC CÓ SẴN (chỉ được chọn trong danh sách này):',\n    JSON.stringify(catalog.map(x => ({ course_id: x.course_id, course_name: x.course_name, skill: x.skill, job_id: x.job_id || '', level: x.level || '', prerequisite_course_id: x.prerequisite_course_id || '', duration_hours: x.duration_hours })), null, 1),\n    '',\n    'KHÓA ĐÃ GÁN SẴN THEO MẪU ONBOARDING: ' + (trainings.map(t => t.course_id).join(', ') || 'không có'),\n    '',\n    'YÊU CẦU:',\n    '1. Chỉ dùng course_id có thật trong danh mục trên. TUYỆT ĐỐI không bịa khóa học mới.',\n    '2. Đề xuất tối đa 2 khóa BỔ SUNG ngoài các khóa đã gán sẵn (có thể để mảng rỗng nếu không cần).',\n    '3. KHÔNG đề xuất khóa advanced nếu khóa prerequisite_course_id của nó chưa nằm trong danh sách đã gán.',\n    '4. Ưu tiên khóa basic lấp khoảng trống kỹ năng mềm nếu nhân viên đã đủ khóa chuyên môn.',\n    '5. Viết nhận xét lộ trình ngắn gọn, tối đa 60 từ, bằng tiếng Việt.',\n    '',\n    'Trả về DUY NHẤT một object JSON, không kèm giải thích, không kèm markdown:',\n    '{\"extra_course_ids\": [\"CRS-00X\"], \"plan_note\": \"...\"}',\n  ].join('\\n');\n\n  packages.push({ json: {\n    _noop: false,\n    candidate_id: c.candidate_id, full_name: c.full_name, email: c.email,\n    job_id: c.job_id, job_title: c.job_title || '', department: c.department || '',\n    manager: c.hiring_manager || '', buddy: '', is_sample: !!c.is_sample,\n    start_date: fmtISO(start), start_date_vn: fmtVN(start),\n    tasks, trainings, catalog_ids: catalog.map(x => x.course_id), ai_prompt,\n  } });\n}\n\nif (packages.length === 0) {\n  return [{ json: { _noop: true, skipped, message: 'Không có ứng viên hired nào chờ onboarding.' } }];\n}\npackages[0].json._skipped = skipped;\nreturn packages;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        208
+      ],
+      "id": "4478b65b-523d-4479-82b4-78658177f9fd",
+      "name": "Dựng gói onboarding"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a2000000-0000-4000-8000-000000000013",
+              "leftValue": "={{ $json._noop }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3104,
+        208
+      ],
+      "id": "70a42179-8fb9-4d93-8564-4fbb465068ad",
+      "name": "Có ứng viên mới?"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.ai_prompt }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.6,
+      "position": [
+        3328,
+        96
+      ],
+      "id": "7a5cd687-398d-45df-bed9-32fd8db99f69",
+      "name": "AI: gợi ý lộ trình đào tạo",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.8-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        3328,
+        304
+      ],
+      "id": "c2f519ce-e34f-4d8c-916e-ff8b7e992f19",
+      "name": "Google Gemini Chat Model"
+    },
+    {
+      "parameters": {
+        "jsCode": "function parseVN(v) { const m = String(v ?? '').match(/^(\\d{4})-(\\d{2})-(\\d{2})/); return m ? new Date(Date.UTC(+m[1], m[2] - 1, +m[3])) : null; }\nfunction pad2(n) { return String(n).padStart(2, '0'); }\nfunction fmtISO(d) { return d ? d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate()) : ''; }\nfunction addDays(d, n) { return new Date(d.getTime() + Number(n || 0) * 86400000); }\n\n// Nhận kết quả AI, chỉ giữ course_id có thật trong danh mục, gộp vào lộ trình đào tạo.\nconst src = $('A · Đọc ứng viên chờ onboarding (PG)').first().json;\nconst settings = src.settings || {};\nconst byId = Object.fromEntries((src.catalog || []).map(c => [c.course_id, c]));\nconst pkgs = $('Dựng gói onboarding').all().map(i => i.json);\n\nlet aiItems = [];\ntry { aiItems = $('AI: gợi ý lộ trình đào tạo').all(); } catch (e) { aiItems = []; }\n\nreturn pkgs.map((p0, i) => {\n  const p = JSON.parse(JSON.stringify(p0));\n  let planNote = '';\n  let extras = [];\n  let aiStatus = 'off';\n\n  if (settings.training_ai !== false && aiItems[i]) {\n    aiStatus = 'ok';\n    const raw = String(aiItems[i].json.text || aiItems[i].json.response || aiItems[i].json.output || '');\n    const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();\n    const a = cleaned.indexOf('{');\n    const b = cleaned.lastIndexOf('}');\n    try {\n      if (a < 0 || b < 0) throw new Error('không tìm thấy JSON');\n      const parsed = JSON.parse(cleaned.slice(a, b + 1));\n      planNote = String(parsed.plan_note || '').trim();\n      const allowed = new Set(p.catalog_ids);\n      const already = new Set(p.trainings.map(t => t.course_id));\n      extras = (Array.isArray(parsed.extra_course_ids) ? parsed.extra_course_ids : [])\n        .map(x => String(x).trim())\n        .filter(x => allowed.has(x) && !already.has(x))\n        .slice(0, 2);\n    } catch (e) {\n      aiStatus = 'fallback';\n      planNote = 'AI trả về không đúng định dạng — giữ nguyên lộ trình theo mẫu onboarding.';\n      extras = [];\n    }\n  }\n\n  const start = parseVN(p.start_date);\n  for (const cid of extras) {\n    const crs = byId[cid] || {};\n    p.trainings.push({\n      course_id: cid, source: 'ai_suggested', assigned_on: p.start_date, due_on: fmtISO(addDays(start, 14)),\n      cost_vnd: crs.cost_vnd ?? '', note: 'AI đề xuất bổ sung (Workflow 2).',\n      course_name: crs.course_name || '', material_url: crs.material_url || '',\n    });\n  }\n  return { json: { ...p, ai_status: aiStatus, ai_extra_ids: extras, plan_note: planNote } };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3568,
+        96
+      ],
+      "id": "4e63073c-0680-4538-b524-9316d7674b16",
+      "name": "Chuẩn hóa gợi ý AI"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with p as (select $1::jsonb as j),\nemp as (\n  insert into public.employees (candidate_id, job_id, full_name, email, start_date, manager, buddy, is_sample)\n  select p.j->>'candidate_id', p.j->>'job_id', p.j->>'full_name', p.j->>'email', (p.j->>'start_date')::date,\n         nullif(p.j->>'manager', ''), nullif(p.j->>'buddy', ''), coalesce((p.j->>'is_sample')::boolean, false)\n  from p\n  on conflict (candidate_id) do nothing\n  returning employee_id\n),\ntasks as (\n  insert into public.onboarding_tasks (employee_id, template_id, task_name, category, owner_role, due_date, course_id)\n  select emp.employee_id, nullif(t->>'template_id', ''), t->>'task_name', t->>'category', t->>'owner_role',\n         (t->>'due_date')::date, nullif(t->>'course_id', '')\n  from emp, p, jsonb_array_elements(p.j->'tasks') as t\n  returning task_id\n),\ntrs as (\n  insert into public.trainings (employee_id, course_id, source, assigned_on, due_on, cost_vnd, note)\n  select emp.employee_id, r->>'course_id', r->>'source', (r->>'assigned_on')::date, nullif(r->>'due_on', '')::date,\n         nullif(r->>'cost_vnd', '')::numeric, nullif(r->>'note', '')\n  from emp, p, jsonb_array_elements(p.j->'trainings') as r\n  returning training_id\n)\nselect (select employee_id from emp) as employee_id,\n       (select count(*) from tasks)::int as task_count,\n       (select count(*) from trs)::int as training_count;",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify($json)] }}",
+          "queryBatching": "independently"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        3808,
+        96
+      ],
+      "id": "697be880-1818-4e54-bf67-318c58c61c8e",
+      "name": "A · Tạo nhân viên, checklist, đào tạo (PG)",
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst skipped = d.skipped || [];\nreturn [{ json: { logs: [{\n  entity_id: '', event: 'no_new_hire', level: 'skipped',\n  message: 'Không có ứng viên hired nào chờ onboarding.'\n    + (skipped.length ? ' Bỏ qua: ' + skipped.map(s => s.candidate_id + ' (' + s.reason + ')').join('; ') : ''),\n}] } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3328,
+        448
+      ],
+      "id": "ca0831b7-d4b2-4927-9067-2468a29f074a",
+      "name": "Log: không có ứng viên mới"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into public.automation_logs (workflow, entity_id, event, level, message, n8n_execution_id)\nselect 'WF2', nullif(x->>'entity_id', ''), x->>'event', x->>'level', x->>'message', $2\nfrom jsonb_array_elements($1::jsonb) as x\nreturning log_id;",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify($json.logs || []), String($execution.id)] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        3568,
+        448
+      ],
+      "id": "8e6cca13-df7d-4408-b788-bb2dede025f3",
+      "name": "A · Ghi nhật ký bỏ qua (PG)",
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function parseVN(v) { const m = String(v ?? '').match(/^(\\d{4})-(\\d{2})-(\\d{2})/); return m ? new Date(Date.UTC(+m[1], m[2] - 1, +m[3])) : null; }\nfunction pad2(n) { return String(n).padStart(2, '0'); }\nfunction fmtVN(d) { return d ? pad2(d.getUTCDate()) + '/' + pad2(d.getUTCMonth() + 1) + '/' + d.getUTCFullYear() : ''; }\nfunction hienThiNgay(v) { const d = parseVN(v); return d ? fmtVN(d) : String(v || ''); }\n\nconst settings = $('A · Đọc ứng viên chờ onboarding (PG)').first().json.settings || {};\nconst pkgs = $('Chuẩn hóa gợi ý AI').all().map(i => i.json);\nconst saved = $input.all().map(i => i.json);\nconst out = [];\n\npkgs.forEach((d, i) => {\n  const r = saved[i] || {};\n  if (!r.employee_id) return;   // ứng viên đã có hồ sơ nhân viên từ lần chạy trước\n  const lines = d.tasks\n    .map((t, k) => (k + 1) + '. ' + t.task_name + '  —  hạn ' + hienThiNgay(t.due_date) + ' (phụ trách: ' + t.owner_role + ')')\n    .join('\\n');\n  const trainLines = d.trainings\n    .map(t => '- ' + t.course_id + ' ' + (t.course_name || '') + ' — hạn ' + hienThiNgay(t.due_on)\n      + (t.material_url ? '\\n  Tài liệu: ' + t.material_url : ''))\n    .join('\\n');\n\n  const body = [\n    'Chào ' + d.full_name + ',',\n    '',\n    'Chào mừng bạn gia nhập ABC Tech ở vị trí ' + (d.job_title || d.job_id) + '.',\n    '',\n    'Mã nhân viên: ' + r.employee_id,\n    'Ngày bắt đầu: ' + d.start_date_vn,\n    '',\n    'CHECKLIST ONBOARDING (' + d.tasks.length + ' đầu việc):',\n    lines,\n    '',\n    'LỘ TRÌNH ĐÀO TẠO (' + d.trainings.length + ' khóa):',\n    trainLines || '- (chưa có khóa nào)',\n    d.plan_note ? '\\nGợi ý lộ trình: ' + d.plan_note : '',\n    '',\n    'Quản lý và buddy sẽ liên hệ với bạn trong ngày làm việc đầu tiên.',\n    '',\n    '---',\n    'Email tự động từ hệ thống HR (Workflow 2).',\n  ].join('\\n');\n\n  out.push({ json: {\n    send: settings.wf2_dry_run !== true,\n    to: settings.wf2_send_to_real_email === false ? (settings.demo_email || settings.hr_notify_email) : d.email,\n    subject: 'Chào mừng ' + d.full_name + ' — thông tin onboarding (' + r.employee_id + ')',\n    body,\n    employee_id: r.employee_id,\n  } });\n});\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4048,
+        0
+      ],
+      "id": "2bb1d64e-b321-41d7-a169-6d46d5fd27cc",
+      "name": "Soạn mail chào mừng"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a2000000-0000-4000-8000-000000000027",
+              "leftValue": "={{ $json.send }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4272,
+        0
+      ],
+      "id": "3f7cf559-4b86-43d7-ab61-4aecd3a01f80",
+      "name": "Gửi mail chào mừng?"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.body }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        4496,
+        0
+      ],
+      "id": "77ab5388-a7fb-4006-85de-1900c39e802d",
+      "name": "Gmail: mail chào mừng",
+      "webhookId": "19035824-7c4a-4798-b7f5-11f679f225c5",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "UPgAUSUv5CgQdwJr",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const settings = $('A · Đọc ứng viên chờ onboarding (PG)').first().json.settings || {};\nconst pkgs = $('Chuẩn hóa gợi ý AI').all().map(i => i.json);\nconst saved = $('A · Tạo nhân viên, checklist, đào tạo (PG)').all().map(i => i.json);\nconst skipped = $('Dựng gói onboarding').first().json._skipped || [];\n\nconst logs = pkgs.map((d, i) => {\n  const r = saved[i] || {};\n  if (!r.employee_id) {\n    return { entity_id: d.candidate_id, event: 'onboarding_skipped', level: 'skipped',\n      message: d.candidate_id + ' đã có hồ sơ nhân viên, không tạo lại.' };\n  }\n  return { entity_id: r.employee_id, event: 'onboarding_created', level: 'success',\n    message: 'Tạo ' + r.employee_id + ' (' + d.full_name + ', ' + d.job_id + ') từ ' + d.candidate_id + ' với '\n      + r.task_count + ' đầu việc, ' + r.training_count + ' khóa đào tạo. AI: ' + d.ai_status\n      + (d.ai_extra_ids.length ? ' (+' + d.ai_extra_ids.join(',') + ')' : '') + '.'\n      + (settings.wf2_dry_run === true ? ' Chạy thử: không gửi email.' : '') };\n});\nfor (const s of skipped) {\n  logs.push({ entity_id: s.candidate_id, event: 'onboarding_skipped', level: 'warning',\n    message: 'Bỏ qua ' + s.candidate_id + ': ' + s.reason + '.' });\n}\nreturn [{ json: { logs } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4048,
+        208
+      ],
+      "id": "5f8f188f-970b-4765-bfb5-3906d91f2302",
+      "name": "Ghi log nhánh A"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into public.automation_logs (workflow, entity_id, event, level, message, n8n_execution_id)\nselect 'WF2', nullif(x->>'entity_id', ''), x->>'event', x->>'level', x->>'message', $2\nfrom jsonb_array_elements($1::jsonb) as x\nreturning log_id;",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify($json.logs || []), String($execution.id)] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        4272,
+        208
+      ],
+      "id": "e3bb68ed-e4b2-497f-a453-3e8a0b6a0833",
+      "name": "A · Ghi nhật ký (PG)",
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 8 * * 1-5"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        2400,
+        960
+      ],
+      "id": "df630a77-3858-414b-a2d6-d79cd94ea325",
+      "name": "Lịch B — 08:30 ngày làm việc"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n  (select jsonb_object_agg(s.key, s.value) from public.app_settings s) as settings,\n  nullif($1, '') as only_employee,\n  $2::boolean as force,\n  to_char(now() at time zone 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD') as today,\n  coalesce((select jsonb_agg(jsonb_build_object('task_id', t.task_id, 'employee_id', t.employee_id, 'task_name', t.task_name,\n     'category', t.category, 'owner_role', t.owner_role, 'due_date', t.due_date, 'status', t.status,\n     'completed_on', t.completed_on, 'course_id', t.course_id, 'last_reminded_on', t.last_reminded_on)\n     order by t.employee_id, t.due_date, t.task_id)\n   from public.onboarding_tasks t join public.employees e on e.employee_id = t.employee_id\n   where e.employment_status <> 'resigned' and ($1 = '' or t.employee_id = $1)), '[]'::jsonb) as tasks,\n  coalesce((select jsonb_agg(jsonb_build_object('employee_id', e.employee_id, 'full_name', e.full_name, 'email', e.email,\n     'manager', e.manager, 'buddy', e.buddy, 'department', j.department, 'tools_access', e.tools_access) order by e.employee_id)\n   from public.employees e join public.jobs j on j.job_id = e.job_id\n   where e.employment_status <> 'resigned' and ($1 = '' or e.employee_id = $1)), '[]'::jsonb) as employees,\n  coalesce((select jsonb_agg(jsonb_build_object('training_id', r.training_id, 'employee_id', r.employee_id,\n     'course_id', r.course_id, 'status', r.status, 'validity_days', k.validity_days) order by r.training_id)\n   from public.trainings r join public.courses k on k.course_id = r.course_id\n   where r.status <> 'completed' and ($1 = '' or r.employee_id = $1)), '[]'::jsonb) as trainings;",
+        "options": {
+          "queryReplacement": "={{ [String($json.employee_id || ''), $json.action === 'remind'] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        2640,
+        960
+      ],
+      "id": "48c06036-db0f-4789-93a2-5328379b5695",
+      "name": "B · Đọc tiến độ onboarding (PG)",
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function parseVN(v) { const m = String(v ?? '').match(/^(\\d{4})-(\\d{2})-(\\d{2})/); return m ? new Date(Date.UTC(+m[1], m[2] - 1, +m[3])) : null; }\nfunction pad2(n) { return String(n).padStart(2, '0'); }\nfunction fmtISO(d) { return d ? d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate()) : ''; }\nfunction addDays(d, n) { return new Date(d.getTime() + Number(n || 0) * 86400000); }\nfunction diffDays(a, b) { return Math.round((a.getTime() - b.getTime()) / 86400000); }\nfunction toInt(v) { const n = parseInt(String(v ?? '').replace(/[^0-9-]/g, ''), 10); return isNaN(n) ? 0 : n; }\n// Chữ ký link trong email: không cho người ngoài đoán mã đầu việc khác để bấm bừa (mức bảo vệ cho bài demo).\nfunction kyLink(id, secret) {\n  const s = String(id).toUpperCase() + '|' + String(secret);\n  let a = 5381, b = 2166136261;\n  for (let i = 0; i < s.length; i++) { a = ((a * 33) ^ s.charCodeAt(i)) >>> 0; b = ((b ^ s.charCodeAt(i)) * 16777619) >>> 0; }\n  return (a.toString(36) + b.toString(36)).slice(0, 16);\n}\nfunction nhanLink(base, path, id, secret) { return String(base).replace(/\\/+$/, '') + '/' + path + '?t=' + encodeURIComponent(id) + '&k=' + kyLink(id, secret); }\n\n// Quét tiến độ onboarding: tìm việc trễ / vướng / sắp hạn, đồng bộ quyền công cụ và khoá đào tạo.\nconst r = $input.first().json;\n// HR bấm \"Nhắc\" trên cổng HR: chỉ quét người đó và gửi luôn, bỏ qua thời gian nghỉ giữa hai lần nhắc.\nconst force = r.force === true;\nconst s = r.settings || {};\nconst today = parseVN(r.today);\nconst tasks = r.tasks || [];\nconst employees = r.employees || [];\nconst trainings = r.trainings || [];\nconst warn = toInt(s.reminder_warn_days ?? 3);\nconst cooldown = toInt(s.reminder_cooldown_days ?? 2);\nconst cooldownBlocked = toInt(s.blocked_cooldown_days ?? 3);\n\nconst remindIds = [];\nconst groups = new Map();\nfor (const t of tasks) {\n  // submitted = nhân viên đã nộp kết quả, đang chờ HR duyệt. Không nhắc nữa.\n  if (t.status === 'done' || t.status === 'submitted') continue;\n\n  const due = parseVN(t.due_date);\n  let kind = null;\n  let late = 0;\n  if (t.status === 'blocked') kind = 'blocked';\n  else if (due) {\n    late = diffDays(today, due);\n    if (late > 0) kind = 'overdue';\n    else if (-late <= warn) kind = 'soon';\n  }\n  if (!kind) continue;\n\n  const last = parseVN(t.last_reminded_on);\n  if (!force && last && diffDays(today, last) < (kind === 'blocked' ? cooldownBlocked : cooldown)) continue;\n  remindIds.push(t.task_id);\n\n  // Việc của chính nhân viên thì nhắc nhân viên (kèm nút báo cáo).\n  // Việc của HR, IT, buddy, quản lý thì gửi HR theo dõi, không làm phiền người mới.\n  const audience = t.owner_role === 'employee' ? 'employee' : 'manager';\n  const key = t.employee_id + '|' + audience;\n  if (!groups.has(key)) groups.set(key, { employee_id: t.employee_id, audience, overdue: [], blocked: [], soon: [] });\n  groups.get(key)[kind].push({\n    task_id: t.task_id, task_name: t.task_name, category: t.category || '', due_date: t.due_date,\n    owner_role: t.owner_role, late_days: late,\n    url: audience === 'employee' ? nhanLink(s.webhook_base, 'bao-cao-task-pg', t.task_id, s.link_secret) : '',\n  });\n}\n\n// Quyền công cụ: mọi đầu việc nhóm access đã xong thì confirmed.\nconst employeeUpdates = [];\nfor (const e of employees) {\n  const access = tasks.filter(t => t.employee_id === e.employee_id && t.category === 'access');\n  if (!access.length) continue;\n  const tools = access.every(t => t.status === 'done') ? 'confirmed' : 'pending';\n  if (tools !== e.tools_access) employeeUpdates.push({ employee_id: e.employee_id, tools_access: tools });\n}\n\n// Khoá đào tạo hoàn tất khi mọi đầu việc gắn khoá đó đã xong.\nconst trainingUpdates = [];\nfor (const tr of trainings) {\n  const linked = tasks.filter(t => t.employee_id === tr.employee_id && t.course_id === tr.course_id);\n  if (!linked.length || !linked.every(t => t.status === 'done')) continue;\n  const comp = linked.map(t => parseVN(t.completed_on)).filter(Boolean).sort((a, b) => b - a)[0] || today;\n  const validity = toInt(tr.validity_days);\n  trainingUpdates.push({\n    training_id: tr.training_id, completed_on: fmtISO(comp),\n    certificate_expires_on: validity > 0 ? fmtISO(addDays(comp, validity)) : '',\n  });\n}\n\nconst reminders = [];\nfor (const g of groups.values()) {\n  const e = employees.find(x => x.employee_id === g.employee_id);\n  if (e) reminders.push({ ...g, full_name: e.full_name, email: e.email, manager: e.manager, buddy: e.buddy, department: e.department });\n}\n\nreturn [{ json: {\n  settings: s,\n  db: { today: r.today, remind_task_ids: remindIds, employees: employeeUpdates, trainings: trainingUpdates },\n  reminders,\n  summary: {\n    scanned_tasks: tasks.length, flagged: remindIds.length, employees_changed: employeeUpdates.length,\n    training_completed: trainingUpdates.length, emails: reminders.length,\n    emails_nhan_vien: reminders.filter(x => x.audience === 'employee').length,\n    emails_quan_ly: reminders.filter(x => x.audience === 'manager').length,\n  },\n} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        960
+      ],
+      "id": "c8051853-4085-4eb4-aca8-bd37ff7ca011",
+      "name": "Quét tiến độ onboarding"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with p as (select $1::jsonb as j),\nt as (\n  update public.onboarding_tasks o set last_reminded_on = (p.j->>'today')::date\n  from p where o.task_id in (select jsonb_array_elements_text(p.j->'remind_task_ids'))\n  returning 1\n),\ne as (\n  update public.employees x set tools_access = v->>'tools_access'\n  from p, jsonb_array_elements(p.j->'employees') as v\n  where x.employee_id = v->>'employee_id' and x.tools_access is distinct from v->>'tools_access'\n  returning 1\n),\nr as (\n  update public.trainings x set status = 'completed', completed_on = (v->>'completed_on')::date,\n         certificate_expires_on = nullif(v->>'certificate_expires_on', '')::date\n  from p, jsonb_array_elements(p.j->'trainings') as v\n  where x.training_id = v->>'training_id' and x.status <> 'completed'\n  returning 1\n)\nselect (select count(*) from t)::int as tasks_reminded,\n       (select count(*) from e)::int as employees_changed,\n       (select count(*) from r)::int as trainings_completed;",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify($json.db)] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        3120,
+        800
+      ],
+      "id": "240bf303-3ea7-419b-b127-0930ff7418b3",
+      "name": "B · Cập nhật nhắc việc, quyền, đào tạo (PG)",
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function parseVN(v) { const m = String(v ?? '').match(/^(\\d{4})-(\\d{2})-(\\d{2})/); return m ? new Date(Date.UTC(+m[1], m[2] - 1, +m[3])) : null; }\nfunction pad2(n) { return String(n).padStart(2, '0'); }\nfunction fmtVN(d) { return d ? pad2(d.getUTCDate()) + '/' + pad2(d.getUTCMonth() + 1) + '/' + d.getUTCFullYear() : ''; }\nfunction hienThiNgay(v) { const d = parseVN(v); return d ? fmtVN(d) : String(v || ''); }\nfunction esc(v) { return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;'); }\nfunction khungMail(than) { return '<div style=\"font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#1f2328;max-width:580px\">' + than + '</div>'; }\n\nfunction nutNho(url, chu, mau) {\n  return '<table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"margin:16px 0 4px\"><tr><td '\n    + 'style=\"background:' + mau + ';border-radius:8px\">'\n    + '<a href=\"' + esc(url) + '\" style=\"display:inline-block;padding:13px 30px;'\n    + 'font-family:Arial,sans-serif;font-size:15px;font-weight:bold;color:#ffffff;'\n    + 'text-decoration:none\">' + esc(chu) + '</a></td></tr></table>';\n}\n\nconst d = $('Quét tiến độ onboarding').first().json;\nconst s = d.settings || {};\nconst reminders = d.reminders || [];\n\n// --- một ô đầu việc kèm nút, dùng cho mail gửi nhân viên\nfunction oCoNut(t, nhan, mau) {\n  return '<div style=\"border:1px solid #e3e6ea;border-radius:10px;padding:16px 18px;margin:0 0 14px\">'\n    + '<div style=\"font-size:12px;color:#8a929c;letter-spacing:.4px\">' + esc(t.task_id)\n    + (t.category ? ' · ' + esc(t.category) : '') + '</div>'\n    + '<div style=\"font-size:16px;font-weight:bold;margin:4px 0 8px\">' + esc(t.task_name) + '</div>'\n    + '<div>Hạn ' + esc(hienThiNgay(t.due_date)) + ' — <b style=\"color:' + mau + '\">' + nhan + '</b></div>'\n    + (t.url ? nutNho(t.url, 'Báo cáo đầu việc', '#f86a56') : '')\n    + '</div>';\n}\n// --- dòng trơn, dùng cho mail gửi HR (không có nút)\nfunction dongTron(t) {\n  return '<li style=\"margin:0 0 6px\">' + esc(t.task_name)\n    + ' <span style=\"color:#6b7280\">(' + esc(t.task_id) + ', hạn ' + esc(hienThiNgay(t.due_date))\n    + ', phụ trách ' + esc(t.owner_role) + ')</span>'\n    + (t.late_days > 0 ? ' — <b style=\"color:#c23b2e\">trễ ' + t.late_days + ' ngày</b>' : '')\n    + '</li>';\n}\nfunction khoiTron(tieuDe, arr) {\n  if (!arr || !arr.length) return '';\n  return '<p style=\"margin:16px 0 6px\"><b>' + esc(tieuDe) + '</b></p>'\n    + '<ul style=\"margin:0;padding-left:20px\">' + arr.map(dongTron).join('') + '</ul>';\n}\nconst chanTrang = '<p style=\"color:#8a929c;font-size:12px;border-top:1px solid #e3e6ea;'\n  + 'padding-top:12px;margin-top:20px\">Email tự động từ hệ thống HR (Workflow 2). '\n  + 'Vui lòng không trả lời email này.</p>';\n\nreturn reminders.map(r => {\n  const soon = r.soon || [];\n  const tong = r.overdue.length + r.blocked.length + soon.length;\n  let subject, body, nguoiNhan;\n\n  if (r.audience === 'employee') {\n    nguoiNhan = r.email;\n    subject = r.overdue.length\n      ? '[Quá hạn] ' + tong + ' đầu việc onboarding của bạn cần báo cáo'\n      : '[Nhắc việc] ' + tong + ' đầu việc onboarding sắp tới hạn';\n    body = khungMail(\n      '<p>Chào ' + esc(r.full_name) + ',</p>'\n      + '<p>Bạn có <b>' + tong + ' đầu việc onboarding</b> cần xử lý. '\n      + 'Làm xong hay chưa xong đều bấm nút trong từng ô để báo lại.</p>'\n      + r.overdue.map(t => oCoNut(t, 'đã quá hạn ' + t.late_days + ' ngày', '#c23b2e')).join('')\n      + r.blocked.map(t => oCoNut(t, 'đang vướng, cần hỗ trợ', '#c23b2e')).join('')\n      + soon.map(t => oCoNut(t,\n          t.late_days === 0 ? 'hết hạn hôm nay' : 'còn ' + (-t.late_days) + ' ngày nữa là hết hạn',\n          '#b07400')).join('')\n      + '<p style=\"color:#6b7280;font-size:13px\">Bấm <b>Đã hoàn thành</b> thì bạn nộp kèm '\n      + 'tệp hoặc link kết quả. HR xem xong mới duyệt, và bạn sẽ nhận email báo kết quả.</p>'\n      + '<p style=\"color:#6b7280;font-size:13px\">Chưa kịp làm thì chọn <b>Chưa xong</b> và ghi lý do. '\n      + 'Hệ thống ghi nhận là đang xử lý, không tính là bỏ bê.</p>'\n      + '<p style=\"color:#6b7280;font-size:13px\">Cần hỗ trợ thì liên hệ quản lý '\n      + esc(r.manager || '(chưa gán)') + ' hoặc buddy ' + esc(r.buddy || '(chưa gán)') + '.</p>'\n      + chanTrang);\n  } else {\n    nguoiNhan = s.hr_notify_email || r.email;\n    subject = '[Nhắc việc] ' + tong + ' đầu việc onboarding của ' + r.employee_id\n      + ' đang chờ bộ phận phụ trách';\n    body = khungMail(\n      '<p>Kính gửi ' + esc(r.manager || 'quản lý trực tiếp') + ' và các bộ phận liên quan,</p>'\n      + '<p>Các đầu việc sau thuộc trách nhiệm của HR, IT, Buddy hoặc quản lý, phục vụ quá trình '\n      + 'onboarding của nhân viên <b>' + esc(r.full_name) + '</b> ('\n      + esc(r.employee_id) + ', ' + esc(r.department || 'chưa rõ phòng ban') + '):</p>'\n      + khoiTron('Việc đã quá hạn', r.overdue)\n      + khoiTron('Việc đang vướng (blocked)', r.blocked)\n      + khoiTron('Việc sắp tới hạn', soon)\n      + '<p style=\"margin-top:16px\">Nhân viên không nhận được email này. Đề nghị bộ phận phụ trách '\n      + 'xử lý sớm để không ảnh hưởng tiến độ hòa nhập của người mới.</p>'\n      + chanTrang);\n  }\n\n  return { json: {\n    send: s.wf2_dry_run !== true,\n    to: s.wf2_send_to_real_email === false ? (s.demo_email || s.hr_notify_email) : nguoiNhan,\n    subject, body, employee_id: r.employee_id, audience: r.audience,\n  } };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3120,
+        960
+      ],
+      "id": "0304ea07-1307-4143-ad53-654d3a50800c",
+      "name": "Soạn mail nhắc việc"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a2000000-0000-4000-8000-000000000051",
+              "leftValue": "={{ $json.send }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3344,
+        960
+      ],
+      "id": "c76c2745-6c95-408b-a15a-ab6c473f8198",
+      "name": "Gửi mail nhắc việc?"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.body }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        3568,
+        960
+      ],
+      "id": "5496325f-a2bb-4cd8-b512-370a21a83faa",
+      "name": "Gmail: nhắc việc",
+      "webhookId": "318c212a-eed8-462d-be7e-2b423495b04c",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "UPgAUSUv5CgQdwJr",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Quét tiến độ onboarding').first().json;\nconst s = d.summary;\nreturn [{ json: { logs: [{\n  entity_id: '', event: 'progress_scan', level: (d.settings || {}).wf2_dry_run === true ? 'info' : 'success',\n  message: 'Quét ' + s.scanned_tasks + ' đầu việc; ' + s.flagged + ' việc trễ/vướng/sắp hạn; '\n    + s.employees_changed + ' nhân viên đổi trạng thái quyền công cụ; ' + s.training_completed\n    + ' khóa đào tạo hoàn tất; ' + s.emails + ' email nhắc việc ('\n    + s.emails_nhan_vien + ' cho nhân viên, ' + s.emails_quan_ly + ' cho HR).'\n    + ((d.settings || {}).wf2_dry_run === true ? ' Chạy thử: không gửi email.' : ''),\n}] } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3120,
+        1120
+      ],
+      "id": "764b06b7-91d0-4f52-88f1-80a4d45dd934",
+      "name": "Ghi log nhánh B"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into public.automation_logs (workflow, entity_id, event, level, message, n8n_execution_id)\nselect 'WF2', nullif(x->>'entity_id', ''), x->>'event', x->>'level', x->>'message', $2\nfrom jsonb_array_elements($1::jsonb) as x\nreturning log_id;",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify($json.logs || []), String($execution.id)] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        3344,
+        1120
+      ],
+      "id": "4f04d66a-72b0-4a92-899d-c0b57b28cd70",
+      "name": "B · Ghi nhật ký (PG)",
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        2400,
+        1600
+      ],
+      "id": "0251e34e-6df6-4de6-a9df-b456c3dbcb67",
+      "name": "Lịch C — 09:00 hằng ngày"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n  (select jsonb_object_agg(s.key, s.value) from public.app_settings s) as settings,\n  to_char(now() at time zone 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD') as today,\n  coalesce((select jsonb_agg(jsonb_build_object('employee_id', e.employee_id, 'full_name', e.full_name, 'email', e.email,\n     'job_id', e.job_id, 'department', j.department, 'manager', e.manager, 'start_date', e.start_date,\n     'task_total', (select count(*) from public.onboarding_tasks t where t.employee_id = e.employee_id),\n     'task_done', (select count(*) from public.onboarding_tasks t where t.employee_id = e.employee_id and t.status = 'done'),\n     'course_total', (select count(*) from public.trainings r where r.employee_id = e.employee_id),\n     'course_done', (select count(*) from public.trainings r where r.employee_id = e.employee_id and r.status = 'completed'))\n     order by e.employee_id)\n   from public.employees e join public.jobs j on j.job_id = e.job_id\n   where e.employment_status = 'probation'), '[]'::jsonb) as employees;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        2640,
+        1600
+      ],
+      "id": "22331241-321d-4edb-818c-77c6b9e6337f",
+      "name": "C · Đọc nhân viên thử việc (PG)",
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function parseVN(v) { const m = String(v ?? '').match(/^(\\d{4})-(\\d{2})-(\\d{2})/); return m ? new Date(Date.UTC(+m[1], m[2] - 1, +m[3])) : null; }\nfunction diffDays(a, b) { return Math.round((a.getTime() - b.getTime()) / 86400000); }\nfunction toInt(v) { const n = parseInt(String(v ?? '').replace(/[^0-9-]/g, ''), 10); return isNaN(n) ? 0 : n; }\n\n// Nhân viên đủ số ngày thử việc, xong checklist và xong đào tạo thì chuyển chính thức.\nconst r = $input.first().json;\nconst s = r.settings || {};\nconst today = parseVN(r.today);\nconst NGAY_THU_VIEC = toInt(s.probation_days) || 90;\nconst employees = r.employees || [];\n\nconst duDieuKien = [];\nconst chuaDu = [];\nfor (const e of employees) {\n  const start = parseVN(e.start_date);\n  if (!start) continue;\n  const soNgay = diffDays(today, start);\n  const conLai = e.task_total - e.task_done;\n  const khoaConLai = e.course_total - e.course_done;\n\n  const lyDo = [];\n  if (soNgay < NGAY_THU_VIEC) lyDo.push('mới ' + soNgay + '/' + NGAY_THU_VIEC + ' ngày');\n  if (e.task_total === 0) lyDo.push('chưa có checklist onboarding');\n  else if (conLai > 0) lyDo.push('còn ' + conLai + ' đầu việc chưa xong');\n  if (khoaConLai > 0) lyDo.push('còn ' + khoaConLai + ' khóa đào tạo chưa hoàn tất');\n\n  const ho = { ...e, so_ngay: soNgay };\n  if (lyDo.length === 0) duDieuKien.push(ho);\n  else chuaDu.push({ ...ho, ly_do: lyDo.join('; ') });\n}\n\nreturn [{ json: {\n  settings: s,\n  du_dieu_kien: duDieuKien,\n  chua_du: chuaDu,\n  ids: duDieuKien.map(x => x.employee_id),\n  summary: { dang_thu_viec: employees.length, du_dieu_kien: duDieuKien.length, chua_du: chuaDu.length },\n} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        1600
+      ],
+      "id": "92643ab2-513d-4187-bb1c-712b67f5a315",
+      "name": "Quét hết thử việc"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with u as (\n  update public.employees set employment_status = 'official'\n  where employee_id in (select jsonb_array_elements_text($1::jsonb)) and employment_status = 'probation'\n  returning employee_id\n)\nselect count(*)::int as updated, coalesce(jsonb_agg(employee_id), '[]'::jsonb) as employee_ids from u;",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify($json.ids || [])] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        3120,
+        1520
+      ],
+      "id": "d75c4418-bdf2-4d33-a76d-9e1af3b7eb8d",
+      "name": "C · Chuyển chính thức (PG)",
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function parseVN(v) { const m = String(v ?? '').match(/^(\\d{4})-(\\d{2})-(\\d{2})/); return m ? new Date(Date.UTC(+m[1], m[2] - 1, +m[3])) : null; }\nfunction pad2(n) { return String(n).padStart(2, '0'); }\nfunction fmtVN(d) { return d ? pad2(d.getUTCDate()) + '/' + pad2(d.getUTCMonth() + 1) + '/' + d.getUTCFullYear() : ''; }\nfunction hienThiNgay(v) { const d = parseVN(v); return d ? fmtVN(d) : String(v || ''); }\n\nconst d = $('Quét hết thử việc').first().json;\nconst s = d.settings || {};\nconst doiXong = new Set($input.first().json.employee_ids || []);\nconst ds = (d.du_dieu_kien || []).filter(r => doiXong.has(r.employee_id));\n\nreturn ds.map(r => {\n  const body = [\n    'Kính gửi HR và ' + (r.manager || 'quản lý trực tiếp') + ',',\n    '',\n    'Nhân viên sau đã hoàn tất thời gian thử việc và đủ điều kiện chuyển chính thức:',\n    '',\n    'Mã nhân viên: ' + r.employee_id,\n    'Họ và tên: ' + r.full_name,\n    'Vị trí: ' + r.job_id + ' — ' + (r.department || ''),\n    'Ngày bắt đầu: ' + hienThiNgay(r.start_date) + ' (' + r.so_ngay + ' ngày)',\n    'Checklist onboarding: ' + r.task_done + '/' + r.task_total + ' đầu việc đã xong',\n    'Đào tạo: ' + r.course_done + '/' + r.course_total + ' khóa đã hoàn tất',\n    '',\n    'Hệ thống đã cập nhật trạng thái nhân viên sang chính thức (official).',\n    'Đề nghị HR hoàn tất thủ tục hợp đồng chính thức.',\n    '',\n    '---',\n    'Email tự động từ hệ thống HR (Workflow 2, nhánh hết thử việc).',\n  ].join('\\n');\n\n  return { json: {\n    send: s.wf2_dry_run !== true,\n    to: s.wf2_send_to_real_email === false ? (s.demo_email || s.hr_notify_email) : s.hr_notify_email,\n    subject: '[Hết thử việc] ' + r.employee_id + ' — ' + r.full_name + ' đủ điều kiện chuyển chính thức',\n    body,\n    employee_id: r.employee_id,\n  } };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3344,
+        1520
+      ],
+      "id": "b426d83c-8a78-4f04-a4c7-5e68d7dce611",
+      "name": "Soạn mail hết thử việc"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a2000000-0000-4000-8000-000000000067",
+              "leftValue": "={{ $json.send }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3568,
+        1520
+      ],
+      "id": "cee3dccc-1b80-4a8f-af9e-34872f839666",
+      "name": "Gửi mail hết thử việc?"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.body }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        3792,
+        1520
+      ],
+      "id": "220821f3-5ee3-4bb5-bcfc-9583268cf501",
+      "name": "Gmail: hết thử việc",
+      "webhookId": "7026fd1f-fb89-4ced-a484-93cbffed4e1d",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "UPgAUSUv5CgQdwJr",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Quét hết thử việc').first().json;\nconst s = d.summary;\nconst chuaDu = (d.chua_du || []).map(x => x.employee_id + ' (' + x.ly_do + ')').join('; ');\nreturn [{ json: { logs: [{\n  entity_id: '', event: 'probation_review', level: 'success',\n  message: 'Rà ' + s.dang_thu_viec + ' nhân viên thử việc; ' + s.du_dieu_kien\n    + ' đủ điều kiện chuyển chính thức; ' + s.chua_du + ' chưa đủ.'\n    + (chuaDu ? ' Chưa đủ: ' + chuaDu : ''),\n}] } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3120,
+        1696
+      ],
+      "id": "654268f0-ea9c-42ce-8166-8304a2bc9edd",
+      "name": "Ghi log nhánh C"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into public.automation_logs (workflow, entity_id, event, level, message, n8n_execution_id)\nselect 'WF2', nullif(x->>'entity_id', ''), x->>'event', x->>'level', x->>'message', $2\nfrom jsonb_array_elements($1::jsonb) as x\nreturning log_id;",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify($json.logs || []), String($execution.id)] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        3344,
+        1696
+      ],
+      "id": "2efaf3f4-bd71-4154-a828-bffb924db984",
+      "name": "C · Ghi nhật ký (PG)",
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "multipleMethods": true,
+        "path": "bao-cao-task-pg",
+        "responseMode": "responseNode",
+        "options": {
+          "binaryPropertyName": "tep",
+          "rawBody": false
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        2384,
+        2224
+      ],
+      "id": "b0674235-b891-42fa-815f-72c7ccf497ad",
+      "name": "Webhook nhân viên",
+      "webhookId": "68cf1535-0949-41dc-8c3e-cd11e6bca2bf"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n  (select jsonb_object_agg(s.key, s.value) from public.app_settings s) as settings,\n  to_char(now() at time zone 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD') as today,\n  to_jsonb(t) as task,\n  case when e.employee_id is null then null else jsonb_build_object('employee_id', e.employee_id, 'full_name', e.full_name,\n    'email', e.email, 'manager', e.manager, 'department', j.department) end as employee\nfrom (select 1) as one\nleft join public.onboarding_tasks t on t.task_id = upper(btrim($1))\nleft join public.employees e on e.employee_id = t.employee_id\nleft join public.jobs j on j.job_id = e.job_id;",
+        "options": {
+          "queryReplacement": "={{ [String(($json.query && $json.query.t) || ($json.body && $json.body.t) || '')] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        2608,
+        2224
+      ],
+      "id": "34a46669-74a5-4c51-8374-332add629933",
+      "name": "G · Đọc đầu việc (PG)",
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const VN_OFFSET_MS = 7 * 3600000;\nfunction parseVN(v) { const m = String(v ?? '').match(/^(\\d{4})-(\\d{2})-(\\d{2})/); return m ? new Date(Date.UTC(+m[1], m[2] - 1, +m[3])) : null; }\nfunction pad2(n) { return String(n).padStart(2, '0'); }\nfunction fmtVN(d) { return d ? pad2(d.getUTCDate()) + '/' + pad2(d.getUTCMonth() + 1) + '/' + d.getUTCFullYear() : ''; }\nfunction hienThiNgay(v) { const d = parseVN(v); return d ? fmtVN(d) : String(v || ''); }\nfunction diffDays(a, b) { return Math.round((a.getTime() - b.getTime()) / 86400000); }\nfunction homNayVN() { const vn = new Date(Date.now() + VN_OFFSET_MS); return new Date(Date.UTC(vn.getUTCFullYear(), vn.getUTCMonth(), vn.getUTCDate())); }\n// Chữ ký link trong email: không cho người ngoài đoán mã đầu việc khác để bấm bừa (mức bảo vệ cho bài demo).\nfunction kyLink(id, secret) {\n  const s = String(id).toUpperCase() + '|' + String(secret);\n  let a = 5381, b = 2166136261;\n  for (let i = 0; i < s.length; i++) { a = ((a * 33) ^ s.charCodeAt(i)) >>> 0; b = ((b ^ s.charCodeAt(i)) * 16777619) >>> 0; }\n  return (a.toString(36) + b.toString(36)).slice(0, 16);\n}\n// Webhook nhiều phương thức có nhiều cổng ra (GET, POST): dò từng cổng, cổng nào có dữ liệu thì lấy.\nfunction itemWebhook(ten) {\n  const n = $(ten);\n  for (let i = 0; i < 5; i++) { try { const a = n.all(i); if (a && a.length) return a[0]; } catch (e) { /* cổng rỗng */ } }\n  try { const f = n.first(); if (f) return f; } catch (e) { /* không có gì */ }\n  return { json: {}, binary: {} };\n}\nfunction esc(v) { return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;'); }\nfunction trangHTML(tieuDe, than) {\n  return '<!doctype html><html lang=\"vi\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">'\n    + '<title>' + esc(tieuDe) + '</title><style>*{box-sizing:border-box}'\n    + 'body{margin:0;padding:32px 16px;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,Arial,sans-serif;color:#1f2328}'\n    + '.hop{max-width:560px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 2px 14px rgba(0,0,0,.08);padding:28px}'\n    + 'h1{font-size:20px;margin:0 0 4px}.phu{color:#6b7280;font-size:13px;margin:0 0 20px}'\n    + '.bang{width:100%;border-collapse:collapse;margin:0 0 20px;font-size:14px}'\n    + '.bang td{padding:8px 0;border-bottom:1px solid #eceef1;vertical-align:top}.bang td:first-child{color:#6b7280;width:130px}'\n    + 'textarea,input[type=text]{width:100%;padding:10px;border:1px solid #d6d9de;border-radius:8px;font:inherit;font-size:14px}'\n    + 'textarea{min-height:76px;resize:vertical}'\n    + 'input[type=file]{width:100%;padding:12px;border:1px dashed #c3c8cf;border-radius:8px;background:#fafbfc;font-size:13px}'\n    + '.o{margin:0 0 16px}.bao-nhac{background:#fff6e5;color:#7a5200}label{display:block;font-size:13px;color:#6b7280;margin:0 0 6px}'\n    + '.nut{display:inline-block;border:0;border-radius:8px;padding:14px 26px;font-size:15px;font-weight:700;color:#fff;cursor:pointer;text-decoration:none;margin:14px 10px 0 0}'\n    + '.cam{background:#f86a56}.xanh{background:#17a36a}.xam{background:#8a929c}.do{background:#e0483a}'\n    + '.bao{padding:14px 16px;border-radius:10px;font-size:14px;margin:0 0 18px}'\n    + '.bao-ok{background:#e7f6ee;color:#17603f}.bao-loi{background:#fdeceb;color:#8c2c22}.bao-cho{background:#e8eefc;color:#1a3f8f}'\n    + '</style></head><body><div class=\"hop\">' + than + '</div></body></html>';\n}\nfunction dongBang(nhan, giaTri) { return '<tr><td>' + esc(nhan) + '</td><td>' + esc(giaTri) + '</td></tr>'; }\nfunction trangLoi(thongBao) {\n  return trangHTML('Không mở được', '<h1>Không mở được phiếu này</h1><div class=\"bao bao-loi\">' + esc(thongBao) + '</div>'\n    + '<p class=\"phu\">Nếu bạn vừa bấm nút trong email, hãy bấm lại đúng nút mới nhất, hoặc báo HR để được gửi lại.</p>');\n}\n\nconst db = $input.first().json;\nconst s = db.settings || {};\nconst itWh = itemWebhook('Webhook nhân viên');\nconst req = itWh.json || {};\n\n// n8n đặt dữ liệu form POST ở chỗ khác nhau tùy phiên bản và tùy kiểu mã hóa.\n// Gom hết mọi chỗ có thể, chỗ nào có thì lấy, không phụ thuộc một đường duy nhất.\nfunction gomTS(o, sau) {\n  const ra = {};\n  if (!o || typeof o !== 'object') return ra;\n  for (const k of Object.keys(o)) {\n    const v = o[k];\n    if (v !== null && typeof v === 'object' && !Array.isArray(v) && (sau || 0) < 2) {\n      Object.assign(ra, gomTS(v, (sau || 0) + 1));   // body.data, body.fields...\n    } else {\n      ra[k] = Array.isArray(v) ? v[v.length - 1] : v;  // nút gửi trùng tên thì lấy cái cuối\n    }\n  }\n  return ra;\n}\nconst p = Object.assign({}, gomTS(req.query), gomTS(req.params), gomTS(req.body));\n\nconst ma = String(p.t || '').trim().toUpperCase();\nconst chuKy = String(p.k || '').trim();\nconst ketQua = String(p.r || '').trim().toLowerCase();\nconst ghiChu = String(p.note || '').trim();\nconst linkDan = String(p.link || '').trim();\n\n// Đếm tệp. Trình duyệt vẫn gửi phần tệp rỗng khi không chọn gì nên phải lọc.\nconst binAll = itWh.binary || {};\nconst soTep = Object.keys(binAll).filter(k => binAll[k] && (binAll[k].fileName || binAll[k].data)).length;\n// Phòng trường hợp n8n không bóc được tệp ra phần nhị phân mà để tên tệp trong body.\nconst coTep = soTep > 0 || Object.keys(p).some(k => /^tep/i.test(k) && String(p[k] || '').trim() !== '');\n\nconst dung = (html) => [{ json: { _stage: 'dung', _html: html, _upload: false } }];\n\nif (!ma) return dung(trangLoi('Link thiếu mã đầu việc.'));\nif (chuKy !== kyLink(ma, s.link_secret)) return dung(trangLoi('Link không hợp lệ hoặc đã bị sửa.'));\n\nconst t = db.task;\nif (!t) return dung(trangLoi('Không tìm thấy đầu việc ' + ma + '.'));\nconst emp = db.employee || {};\nconst due = parseVN(t.due_date);\nconst conLai = due ? diffDays(due, parseVN(db.today) || homNayVN()) : null;\n\nconst thongTin = '<table class=\"bang\">'\n  + dongBang('Mã đầu việc', t.task_id)\n  + dongBang('Nhân viên', (emp.full_name || t.employee_id) + ' (' + t.employee_id + ')')\n  + dongBang('Nội dung', t.task_name)\n  + dongBang('Hạn', hienThiNgay(t.due_date)\n      + (conLai === null ? '' : (conLai > 0 ? '  ·  còn ' + conLai + ' ngày'\n        : (conLai === 0 ? '  ·  hết hạn hôm nay' : '  ·  quá hạn ' + Math.abs(conLai) + ' ngày'))))\n  + '</table>';\n\nif (t.status === 'done') {\n  return dung(trangHTML('Đầu việc đã xong',\n    '<h1>Đầu việc này đã hoàn tất</h1>'\n    + '<div class=\"bao bao-ok\">HR đã duyệt xong đầu việc này, bạn không cần báo lại.</div>'\n    + thongTin));\n}\nif (t.status === 'submitted') {\n  return dung(trangHTML('Đang chờ HR',\n    '<h1>Đang chờ HR duyệt</h1>'\n    + '<div class=\"bao bao-cho\">Bạn đã nộp kết quả đầu việc này. '\n    + 'HR đang kiểm tra, kết quả sẽ gửi về email của bạn.</div>'\n    + thongTin));\n}\n\n// ---------- trang form ----------\nfunction trangForm(canhBao) {\n  const act = String(s.webhook_base).replace(/\\/+$/, '') + '/bao-cao-task-pg';\n  return trangHTML('Báo cáo đầu việc',\n    '<h1>Báo cáo đầu việc</h1>'\n    + '<p class=\"phu\">Nộp kết quả để HR xem rồi duyệt. Kết quả ghi thẳng vào hệ thống HR.</p>'\n    + thongTin\n    + (t.hr_review === 'returned' && t.hr_note ? '<div class=\"bao bao-loi\">HR đã trả lại lần trước: ' + esc(t.hr_note) + '</div>' : '')\n    + (canhBao ? '<div class=\"bao bao-nhac\">' + esc(canhBao) + '</div>' : '')\n    + '<form method=\"post\" enctype=\"multipart/form-data\" action=\"' + esc(act) + '\">'\n    + '<input type=\"hidden\" name=\"t\" value=\"' + esc(t.task_id) + '\">'\n    + '<input type=\"hidden\" name=\"k\" value=\"' + esc(chuKy) + '\">'\n    + '<div class=\"o\"><label for=\"note\">Mô tả kết quả — nếu chưa xong thì ghi lý do</label>'\n    + '<textarea id=\"note\" name=\"note\" placeholder=\"Ví dụ: đã đọc xong tài liệu kiến trúc và ghi chú lại 5 điểm chính về quy trình code review.\">'\n    + esc(ghiChu) + '</textarea></div>'\n    + '<div class=\"o\"><label for=\"tep\">Tệp bằng chứng — ảnh chụp màn hình, PDF, tài liệu. '\n    + 'Tối đa 3 tệp, mỗi tệp dưới 10 MB</label>'\n    + '<input id=\"tep\" type=\"file\" name=\"tep\" multiple></div>'\n    + '<div class=\"o\"><label for=\"link\">Hoặc dán link kết quả — pull request, Google Doc, bản ghi màn hình…</label>'\n    + '<input id=\"link\" type=\"text\" name=\"link\" placeholder=\"https://...\" value=\"' + esc(linkDan) + '\"></div>'\n    + '<button class=\"nut xanh\" type=\"submit\" name=\"r\" value=\"done\">Đã hoàn thành</button>'\n    + '<button class=\"nut xam\" type=\"submit\" name=\"r\" value=\"chua\">Chưa xong</button>'\n    + '</form>');\n}\n\nif (ketQua !== 'done' && ketQua !== 'chua') return dung(trangForm(''));\n\n// ---------- báo xong thì bắt buộc có bằng chứng ----------\nif (ketQua === 'done' && s.require_proof !== false && !coTep && !linkDan) {\n  return dung(trangForm('Báo \"Đã hoàn thành\" thì phải nộp ít nhất một tệp hoặc dán một link. '\n    + 'HR cần xem được kết quả mới duyệt được.'));\n}\n\nreturn [{ json: {\n  _stage: 'ghi',\n  _html: '',\n  _upload: ketQua === 'done' && soTep > 0,\n  ma, chuKy, ketQua, ghiChu, linkDan, soTep,\n  thongTin,\n  drive_folder_id: s.proof_drive_folder_id || 'root',\n  employee_id: t.employee_id,\n  task: {\n    task_id: t.task_id, task_name: t.task_name, category: t.category,\n    employee_id: t.employee_id, employee_name: emp.full_name || t.employee_id,\n    employee_email: String(emp.email || '').trim(),\n    department: emp.department || '', manager: emp.manager || '',\n    due_vn: hienThiNgay(t.due_date), course_id: t.course_id || '',\n  },\n} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2832,
+        2224
+      ],
+      "id": "f05a3e9a-0988-4f32-b016-dde947c3d863",
+      "name": "Kiểm tra báo cáo"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c4000000-0000-4000-8000-000000000007",
+              "leftValue": "={{ $json._upload }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3056,
+        2224
+      ],
+      "id": "188a74f3-ef8c-4178-a021-977ebeda6f1b",
+      "name": "Có tệp đính kèm?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Webhook nhiều phương thức có nhiều cổng ra (GET, POST): dò từng cổng, cổng nào có dữ liệu thì lấy.\nfunction itemWebhook(ten) {\n  const n = $(ten);\n  for (let i = 0; i < 5; i++) { try { const a = n.all(i); if (a && a.length) return a[0]; } catch (e) { /* cổng rỗng */ } }\n  try { const f = n.first(); if (f) return f; } catch (e) { /* không có gì */ }\n  return { json: {}, binary: {} };\n}\n\nconst ctx = $('Kiểm tra báo cáo').first().json;\nconst bin = itemWebhook('Webhook nhân viên').binary || {};\n\n// Mỗi tệp thành một item riêng, phần nhị phân đổi tên cố định là \"tep\"\n// để node Google Drive biết lấy ở đâu.\nconst ra = [];\nObject.keys(bin).slice(0, 3).forEach((k, i) => {\n  const b = bin[k];\n  if (!b || (!b.fileName && !b.data)) return;\n  const duoi = b.fileExtension ? '.' + b.fileExtension : '';\n  const goc = String(b.fileName || ('tep' + (i + 1) + duoi)).replace(/[\\\\/:*?\"<>|]/g, '_');\n  ra.push({\n    json: { ten_tep: ctx.ma + '_' + ctx.employee_id + '_' + (i + 1) + '_' + goc, folder_id: ctx.drive_folder_id || 'root' },\n    binary: { tep: b },\n  });\n});\nreturn ra;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3280,
+        2080
+      ],
+      "id": "a5a81388-c51e-477f-b58e-40b976de3f5a",
+      "name": "Tách tệp đính kèm"
+    },
+    {
+      "parameters": {
+        "inputDataFieldName": "tep",
+        "name": "={{ $json.ten_tep }}",
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive",
+          "cachedResultUrl": "https://drive.google.com/drive/my-drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $json.folder_id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        3504,
+        2080
+      ],
+      "id": "e3734ca1-2be4-42ea-b823-c71adcfe8d87",
+      "name": "Drive: tải tệp lên",
+      "retryOnFail": true,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "cGdNRQ5XaqWdkq2s",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gom kết quả từ node Google Drive thành danh sách tệp (tên + link).\n// Dựng link từ id nên không phụ thuộc Drive có trả webViewLink hay không.\nconst ds = items\n  .map(i => i.json)\n  .filter(x => x && x.id)\n  .map(x => ({ name: x.name || 'tệp', url: 'https://drive.google.com/file/d/' + x.id + '/view' }));\nreturn [{ json: { links: ds } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3728,
+        2080
+      ],
+      "id": "c49b496b-06e7-43f4-a856-76b45755bb3e",
+      "name": "Gom link tệp"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Chữ ký link trong email: không cho người ngoài đoán mã đầu việc khác để bấm bừa (mức bảo vệ cho bài demo).\nfunction kyLink(id, secret) {\n  const s = String(id).toUpperCase() + '|' + String(secret);\n  let a = 5381, b = 2166136261;\n  for (let i = 0; i < s.length; i++) { a = ((a * 33) ^ s.charCodeAt(i)) >>> 0; b = ((b ^ s.charCodeAt(i)) * 16777619) >>> 0; }\n  return (a.toString(36) + b.toString(36)).slice(0, 16);\n}\nfunction nhanLink(base, path, id, secret) { return String(base).replace(/\\/+$/, '') + '/' + path + '?t=' + encodeURIComponent(id) + '&k=' + kyLink(id, secret); }\nfunction esc(v) { return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;'); }\nfunction trangHTML(tieuDe, than) {\n  return '<!doctype html><html lang=\"vi\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">'\n    + '<title>' + esc(tieuDe) + '</title><style>*{box-sizing:border-box}'\n    + 'body{margin:0;padding:32px 16px;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,Arial,sans-serif;color:#1f2328}'\n    + '.hop{max-width:560px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 2px 14px rgba(0,0,0,.08);padding:28px}'\n    + 'h1{font-size:20px;margin:0 0 4px}.phu{color:#6b7280;font-size:13px;margin:0 0 20px}'\n    + '.bang{width:100%;border-collapse:collapse;margin:0 0 20px;font-size:14px}'\n    + '.bang td{padding:8px 0;border-bottom:1px solid #eceef1;vertical-align:top}.bang td:first-child{color:#6b7280;width:130px}'\n    + 'textarea,input[type=text]{width:100%;padding:10px;border:1px solid #d6d9de;border-radius:8px;font:inherit;font-size:14px}'\n    + 'textarea{min-height:76px;resize:vertical}'\n    + 'input[type=file]{width:100%;padding:12px;border:1px dashed #c3c8cf;border-radius:8px;background:#fafbfc;font-size:13px}'\n    + '.o{margin:0 0 16px}.bao-nhac{background:#fff6e5;color:#7a5200}label{display:block;font-size:13px;color:#6b7280;margin:0 0 6px}'\n    + '.nut{display:inline-block;border:0;border-radius:8px;padding:14px 26px;font-size:15px;font-weight:700;color:#fff;cursor:pointer;text-decoration:none;margin:14px 10px 0 0}'\n    + '.cam{background:#f86a56}.xanh{background:#17a36a}.xam{background:#8a929c}.do{background:#e0483a}'\n    + '.bao{padding:14px 16px;border-radius:10px;font-size:14px;margin:0 0 18px}'\n    + '.bao-ok{background:#e7f6ee;color:#17603f}.bao-loi{background:#fdeceb;color:#8c2c22}.bao-cho{background:#e8eefc;color:#1a3f8f}'\n    + '</style></head><body><div class=\"hop\">' + than + '</div></body></html>';\n}\nfunction dongBang(nhan, giaTri) { return '<tr><td>' + esc(nhan) + '</td><td>' + esc(giaTri) + '</td></tr>'; }\nfunction dongBangHTML(nhan, html) { return '<tr><td>' + esc(nhan) + '</td><td>' + html + '</td></tr>'; }\n// Danh sách \"tên::url\" (mỗi dòng một tệp) -> các thẻ <a> bấm được\nfunction dsLink(chuoi, mauChu) {\n  const ds = String(chuoi || '').split(/[\\n|]+/).map(x => x.trim()).filter(Boolean);\n  if (!ds.length) return '<span style=\"color:#8a929c\">(không có)</span>';\n  return ds.map(u => {\n    const m = u.match(/^(.*?)::(.*)$/);\n    return '<a href=\"' + esc(m ? m[2] : u) + '\" target=\"_blank\" rel=\"noopener\" style=\"color:' + (mauChu || '#1a5fd0') + ';word-break:break-all\">' + esc(m ? m[1] : u) + '</a>';\n  }).join('<br>');\n}\n\nconst s = $('G · Đọc đầu việc (PG)').first().json.settings || {};\nconst ctx = $('Kiểm tra báo cáo').first().json;\n\n// Trang lỗi / trang form: trả thẳng, không ghi gì.\nif (ctx._stage !== 'ghi') {\n  return [{ json: { _html: ctx._html, _write: false, _mail: false } }];\n}\n\n// Tệp đã tải lên Drive. Không có tệp thì node đó không chạy, nên bọc try.\nlet tep = [];\ntry {\n  const g = $('Gom link tệp').first();\n  if (g && g.json && Array.isArray(g.json.links)) tep = g.json.links;\n} catch (e) { /* không có tệp đính kèm */ }\nconst links = ctx.linkDan ? String(ctx.linkDan).split(/\\s+/).filter(Boolean).map(u => ({ name: u, url: u })) : [];\nconst proof = tep.concat(links);\nconst proofText = proof.map(x => x.name + '::' + x.url).join('\\n');\n\nconst xong = ctx.ketQua === 'done';\nconst row = {\n  task_id: ctx.task.task_id,\n  status: xong ? 'submitted' : 'in_progress',\n  employee_note: ctx.ghiChu,\n  proof_name: proof.map(x => x.name).join('\\n'),\n  proof_url: proof.map(x => x.url).join('\\n'),\n};\n\nconst bangKQ = (ctx.ghiChu || proof.length)\n  ? '<table class=\"bang\">'\n    + (ctx.ghiChu ? dongBang('Bạn mô tả', ctx.ghiChu) : '')\n    + (proof.length ? dongBangHTML('Đã nộp', dsLink(proofText)) : '')\n    + '</table>'\n  : '';\n\nconst html = xong\n  ? trangHTML('Đã gửi cho HR',\n      '<h1>Đã nhận kết quả, cảm ơn bạn</h1>'\n      + '<div class=\"bao bao-ok\">Kết quả đã gửi sang HR. Trạng thái đầu việc chuyển sang '\n      + '<b>Chờ HR duyệt</b>. HR xem xong sẽ gửi email báo kết quả cho bạn.</div>'\n      + ctx.thongTin + bangKQ)\n  : trangHTML('Đã ghi nhận',\n      '<h1>Đã ghi nhận là đang làm</h1>'\n      + '<div class=\"bao bao-cho\">Trạng thái đầu việc chuyển sang <b>đang làm</b>. '\n      + 'Hệ thống sẽ nhắc lại khi gần hạn. Xong lúc nào bạn bấm lại nút trong email lúc đó.</div>'\n      + ctx.thongTin + bangKQ);\n\nreturn [{ json: {\n  _html: html,\n  _write: true,\n  _mail: xong,                 // chỉ phiền HR khi nhân viên báo xong\n  row,\n  task: ctx.task,\n  ghi_chu_nv: ctx.ghiChu,\n  proof_text: proofText,\n  so_tep: ctx.soTep,\n  link_hr: nhanLink(s.webhook_base, 'hr-duyet-pg', ctx.task.task_id, s.link_secret),\n} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3952,
+        2224
+      ],
+      "id": "96213ee9-6aa6-4860-8d35-49a69b6b8712",
+      "name": "Hoàn tất báo cáo"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json._html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        4176,
+        2224
+      ],
+      "id": "195c4ccb-4e5d-4132-b18e-675454968037",
+      "name": "Trả trang cho nhân viên"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c4000000-0000-4000-8000-000000000014",
+              "leftValue": "={{ $json._write }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4400,
+        2224
+      ],
+      "id": "16fe0251-ed9c-4d5b-9e66-802addb5d84c",
+      "name": "Có cập nhật G?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with p as (select $1::jsonb as j),\nu as (\n  update public.onboarding_tasks o set\n    status = p.j->>'status',\n    employee_note = coalesce(nullif(p.j->>'employee_note', ''), o.employee_note),\n    submitted_at = case when p.j->>'status' = 'submitted' then now() else o.submitted_at end,\n    proof_name = case when p.j->>'status' = 'submitted' then nullif(p.j->>'proof_name', '') else o.proof_name end,\n    proof_url = case when p.j->>'status' = 'submitted' then nullif(p.j->>'proof_url', '') else o.proof_url end,\n    hr_review = case when p.j->>'status' = 'submitted' then null else o.hr_review end,\n    hr_note = case when p.j->>'status' = 'submitted' then null else o.hr_note end,\n    reviewed_at = case when p.j->>'status' = 'submitted' then null else o.reviewed_at end\n  from p\n  where o.task_id = p.j->>'task_id' and o.status not in ('done', 'submitted')\n  returning o.status\n)\nselect (select count(*) from u)::int as updated, (select status from u limit 1) as status;",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify($json.row)] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        4624,
+        2224
+      ],
+      "id": "50a4a94e-65e6-4a6d-bcc2-c44eacbcaa65",
+      "name": "G · Lưu báo cáo (PG)",
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function esc(v) { return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;'); }\n// Danh sách \"tên::url\" (mỗi dòng một tệp) -> các thẻ <a> bấm được\nfunction dsLink(chuoi, mauChu) {\n  const ds = String(chuoi || '').split(/[\\n|]+/).map(x => x.trim()).filter(Boolean);\n  if (!ds.length) return '<span style=\"color:#8a929c\">(không có)</span>';\n  return ds.map(u => {\n    const m = u.match(/^(.*?)::(.*)$/);\n    return '<a href=\"' + esc(m ? m[2] : u) + '\" target=\"_blank\" rel=\"noopener\" style=\"color:' + (mauChu || '#1a5fd0') + ';word-break:break-all\">' + esc(m ? m[1] : u) + '</a>';\n  }).join('<br>');\n}\nfunction nutMail(url, chu, mau) {\n  return '<table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"margin:22px 0\"><tr><td style=\"background:' + mau + ';border-radius:8px\">'\n    + '<a href=\"' + esc(url) + '\" style=\"display:inline-block;padding:15px 34px;font-family:Arial,sans-serif;font-size:16px;font-weight:bold;color:#ffffff;text-decoration:none\">' + esc(chu) + '</a></td></tr></table>';\n}\nfunction khungMail(than) { return '<div style=\"font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#1f2328;max-width:580px\">' + than + '</div>'; }\n\nconst s = $('G · Đọc đầu việc (PG)').first().json.settings || {};\nconst d = $('Hoàn tất báo cáo').first().json;\nconst saved = $input.first().json;\n\n// Chỉ mời HR khi nhân viên báo xong và DB đã ghi nhận (đầu việc chưa bị đổi trạng thái ở nơi khác).\nif (!d._mail || !(Number(saved.updated) > 0)) return [{ json: { send: false } }];\n\nconst t = d.task;\nconst o = (nhan, html) => '<tr><td style=\"padding:8px 0;border-bottom:1px solid #eceef1;color:#6b7280;width:140px\">' + nhan\n  + '</td><td style=\"padding:8px 0;border-bottom:1px solid #eceef1\">' + html + '</td></tr>';\nconst body = khungMail(\n  '<p>Chào HR,</p>'\n  + '<p><b>' + esc(t.employee_name) + '</b> (' + esc(t.employee_id) + ', ' + esc(t.department)\n  + ') vừa báo đã hoàn thành một đầu việc onboarding. Cần bạn kiểm tra kết quả rồi duyệt.</p>'\n  + '<table style=\"width:100%;border-collapse:collapse;font-size:14px;margin:0 0 6px\">'\n  + o('Mã đầu việc', esc(t.task_id))\n  + o('Nội dung', esc(t.task_name))\n  + o('Hạn', esc(t.due_vn))\n  + o('Quản lý', esc(t.manager))\n  + o('Nhân viên mô tả', esc(d.ghi_chu_nv || '(không ghi gì)'))\n  + o('Kết quả đã nộp', dsLink(d.proof_text))\n  + '</table>'\n  + nutMail(d.link_hr, 'Xem xét & duyệt', '#f86a56')\n  + '<p style=\"color:#6b7280;font-size:13px\">Bấm vào tên tệp để xem kết quả, '\n  + 'hoặc bấm nút để mở phiếu duyệt — ở đó cũng mở được tệp. Trong phiếu bạn chọn '\n  + '<b>Duyệt</b> hoặc <b>Chưa đạt</b> và ghi lý do. Nhân viên sẽ nhận email báo kết quả ngay sau đó.</p>'\n  + '<p style=\"color:#8a929c;font-size:12px;border-top:1px solid #e3e6ea;padding-top:12px\">'\n  + 'ABC Tech · Email tự động từ hệ thống onboarding.</p>'\n);\n\nreturn [{ json: {\n  send: s.wf2_dry_run !== true,\n  to: s.wf2_send_to_real_email === false ? (s.demo_email || s.hr_notify_email) : s.hr_notify_email,\n  subject: '[Chờ duyệt] ' + t.task_id + ' — ' + t.employee_name + ' báo đã hoàn thành',\n  body,\n} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4848,
+        2224
+      ],
+      "id": "051cd7e1-9a6a-4823-b5fa-47f9ba867658",
+      "name": "Soạn mail mời HR duyệt"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c4000000-0000-4000-8000-000000000019",
+              "leftValue": "={{ $json.send }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5072,
+        2224
+      ],
+      "id": "9dbc7ae1-d6a3-4d62-9d78-b84ad12cf265",
+      "name": "Gửi mail HR?"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.body }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        5296,
+        2128
+      ],
+      "id": "897e7326-8f3a-4828-a3a3-d0da3126c567",
+      "name": "Gmail: mời HR duyệt",
+      "webhookId": "e90ec00d-220c-4e88-88ff-f165464cf1ad",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "UPgAUSUv5CgQdwJr",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Hoàn tất báo cáo').first().json;\nconst saved = $('G · Lưu báo cáo (PG)').first().json;\nconst t = d.task || {};\nconst r = d.row || {};\nconst ghi = Number(saved.updated) > 0;\nreturn [{ json: { logs: [{\n  entity_id: t.task_id || '', event: 'nhan_vien_bao_cao', level: ghi ? 'success' : 'warning',\n  message: (t.employee_name || '?') + ' báo '\n    + (r.status === 'submitted' ? 'ĐÃ XONG' : 'chưa xong')\n    + ' đầu việc ' + (t.task_id || '?') + ', nộp ' + (d.so_tep || 0) + ' tệp'\n    + (d.proof_text ? '' : ' (không có bằng chứng)')\n    + (ghi ? '. Trạng thái mới: ' + r.status + '.' : '. Không ghi được vì đầu việc đã đổi trạng thái.'),\n}] } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5520,
+        2224
+      ],
+      "id": "78267e80-6279-4b28-b2f7-dee09927da45",
+      "name": "Ghi log nhánh G"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into public.automation_logs (workflow, entity_id, event, level, message, n8n_execution_id)\nselect 'WF2', nullif(x->>'entity_id', ''), x->>'event', x->>'level', x->>'message', $2\nfrom jsonb_array_elements($1::jsonb) as x\nreturning log_id;",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify($json.logs || []), String($execution.id)] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        5744,
+        2224
+      ],
+      "id": "f8134c1f-d30b-4b99-9139-80e0996b37ee",
+      "name": "G · Ghi nhật ký (PG)",
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "path": "hr-duyet-pg",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        2384,
+        2704
+      ],
+      "id": "25c239be-9462-4598-8c57-93b18dfb2cff",
+      "name": "Webhook HR",
+      "webhookId": "3183646e-744e-4c6e-8aab-34542142ee56"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n  (select jsonb_object_agg(s.key, s.value) from public.app_settings s) as settings,\n  to_char(now() at time zone 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD') as today,\n  to_jsonb(t) as task,\n  case when e.employee_id is null then null else jsonb_build_object('employee_id', e.employee_id, 'full_name', e.full_name,\n    'email', e.email, 'manager', e.manager, 'department', j.department) end as employee\nfrom (select 1) as one\nleft join public.onboarding_tasks t on t.task_id = upper(btrim($1))\nleft join public.employees e on e.employee_id = t.employee_id\nleft join public.jobs j on j.job_id = e.job_id;",
+        "options": {
+          "queryReplacement": "={{ [String(($json.query && $json.query.t) || '')] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        2608,
+        2704
+      ],
+      "id": "df99234d-e397-4482-8472-f1f2c7d3a9f4",
+      "name": "H · Đọc đầu việc (PG)",
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const VN_OFFSET_MS = 7 * 3600000;\nfunction parseVN(v) { const m = String(v ?? '').match(/^(\\d{4})-(\\d{2})-(\\d{2})/); return m ? new Date(Date.UTC(+m[1], m[2] - 1, +m[3])) : null; }\nfunction pad2(n) { return String(n).padStart(2, '0'); }\nfunction fmtVN(d) { return d ? pad2(d.getUTCDate()) + '/' + pad2(d.getUTCMonth() + 1) + '/' + d.getUTCFullYear() : ''; }\nfunction hienThiNgay(v) { const d = parseVN(v); return d ? fmtVN(d) : String(v || ''); }\n// Chữ ký link trong email: không cho người ngoài đoán mã đầu việc khác để bấm bừa (mức bảo vệ cho bài demo).\nfunction kyLink(id, secret) {\n  const s = String(id).toUpperCase() + '|' + String(secret);\n  let a = 5381, b = 2166136261;\n  for (let i = 0; i < s.length; i++) { a = ((a * 33) ^ s.charCodeAt(i)) >>> 0; b = ((b ^ s.charCodeAt(i)) * 16777619) >>> 0; }\n  return (a.toString(36) + b.toString(36)).slice(0, 16);\n}\nfunction esc(v) { return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;'); }\nfunction trangHTML(tieuDe, than) {\n  return '<!doctype html><html lang=\"vi\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">'\n    + '<title>' + esc(tieuDe) + '</title><style>*{box-sizing:border-box}'\n    + 'body{margin:0;padding:32px 16px;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,Arial,sans-serif;color:#1f2328}'\n    + '.hop{max-width:560px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 2px 14px rgba(0,0,0,.08);padding:28px}'\n    + 'h1{font-size:20px;margin:0 0 4px}.phu{color:#6b7280;font-size:13px;margin:0 0 20px}'\n    + '.bang{width:100%;border-collapse:collapse;margin:0 0 20px;font-size:14px}'\n    + '.bang td{padding:8px 0;border-bottom:1px solid #eceef1;vertical-align:top}.bang td:first-child{color:#6b7280;width:130px}'\n    + 'textarea,input[type=text]{width:100%;padding:10px;border:1px solid #d6d9de;border-radius:8px;font:inherit;font-size:14px}'\n    + 'textarea{min-height:76px;resize:vertical}'\n    + 'input[type=file]{width:100%;padding:12px;border:1px dashed #c3c8cf;border-radius:8px;background:#fafbfc;font-size:13px}'\n    + '.o{margin:0 0 16px}.bao-nhac{background:#fff6e5;color:#7a5200}label{display:block;font-size:13px;color:#6b7280;margin:0 0 6px}'\n    + '.nut{display:inline-block;border:0;border-radius:8px;padding:14px 26px;font-size:15px;font-weight:700;color:#fff;cursor:pointer;text-decoration:none;margin:14px 10px 0 0}'\n    + '.cam{background:#f86a56}.xanh{background:#17a36a}.xam{background:#8a929c}.do{background:#e0483a}'\n    + '.bao{padding:14px 16px;border-radius:10px;font-size:14px;margin:0 0 18px}'\n    + '.bao-ok{background:#e7f6ee;color:#17603f}.bao-loi{background:#fdeceb;color:#8c2c22}.bao-cho{background:#e8eefc;color:#1a3f8f}'\n    + '</style></head><body><div class=\"hop\">' + than + '</div></body></html>';\n}\nfunction dongBang(nhan, giaTri) { return '<tr><td>' + esc(nhan) + '</td><td>' + esc(giaTri) + '</td></tr>'; }\nfunction dongBangHTML(nhan, html) { return '<tr><td>' + esc(nhan) + '</td><td>' + html + '</td></tr>'; }\n// Danh sách \"tên::url\" (mỗi dòng một tệp) -> các thẻ <a> bấm được\nfunction dsLink(chuoi, mauChu) {\n  const ds = String(chuoi || '').split(/[\\n|]+/).map(x => x.trim()).filter(Boolean);\n  if (!ds.length) return '<span style=\"color:#8a929c\">(không có)</span>';\n  return ds.map(u => {\n    const m = u.match(/^(.*?)::(.*)$/);\n    return '<a href=\"' + esc(m ? m[2] : u) + '\" target=\"_blank\" rel=\"noopener\" style=\"color:' + (mauChu || '#1a5fd0') + ';word-break:break-all\">' + esc(m ? m[1] : u) + '</a>';\n  }).join('<br>');\n}\nfunction trangLoi(thongBao) {\n  return trangHTML('Không mở được', '<h1>Không mở được phiếu này</h1><div class=\"bao bao-loi\">' + esc(thongBao) + '</div>'\n    + '<p class=\"phu\">Nếu bạn vừa bấm nút trong email, hãy bấm lại đúng nút mới nhất, hoặc báo HR để được gửi lại.</p>');\n}\n\nconst db = $input.first().json;\nconst s = db.settings || {};\nconst q = $('Webhook HR').first().json.query || {};\n\nconst ma = String(q.t || '').trim().toUpperCase();\nconst chuKy = String(q.k || '').trim();\nconst quyetDinh = String(q.act || '').trim().toLowerCase();\nconst lyDo = String(q.note || '').trim();\n\nconst khong = (msg) => [{ json: { _html: trangLoi(msg), _write: false, _mail: false } }];\n\nif (!ma) return khong('Link thiếu mã đầu việc.');\nif (chuKy !== kyLink(ma, s.link_secret)) return khong('Link không hợp lệ hoặc đã bị sửa.');\n\nconst t = db.task;\nif (!t) return khong('Không tìm thấy đầu việc ' + ma + '.');\nconst emp = db.employee || {};\n\n// Tên tệp và link lưu ở hai cột, mỗi dòng một tệp.\nconst ten = String(t.proof_name || '').split('\\n');\nconst proofText = String(t.proof_url || '').split('\\n').map((u, i) => u.trim() ? (ten[i] || u) + '::' + u.trim() : '').filter(Boolean).join('\\n');\n\nconst thongTin = '<table class=\"bang\">'\n  + dongBang('Mã đầu việc', t.task_id)\n  + dongBang('Nhân viên', (emp.full_name || t.employee_id) + ' (' + t.employee_id + ')')\n  + dongBang('Bộ phận', emp.department || '')\n  + dongBang('Nội dung', t.task_name)\n  + dongBang('Hạn', hienThiNgay(t.due_date))\n  + dongBang('NV báo xong ngày', t.submitted_at ? fmtVN(new Date(Date.parse(t.submitted_at) + VN_OFFSET_MS)) : '(chưa có)')\n  + dongBang('Ghi chú của NV', String(t.employee_note || '') || '(không có)')\n  + dongBangHTML('Kết quả đã nộp', dsLink(proofText))\n  + '</table>';\n\nif (t.status === 'done') {\n  return [{ json: {\n    _html: trangHTML('Đã duyệt rồi',\n      '<h1>Đầu việc này đã được duyệt</h1>'\n      + '<div class=\"bao bao-ok\">Trạng thái hiện tại là <b>done</b>'\n      + (t.hr_note ? '. Ghi chú duyệt: ' + esc(t.hr_note) : '') + '.</div>'\n      + thongTin),\n    _write: false, _mail: false } }];\n}\nif (t.status !== 'submitted') {\n  return [{ json: {\n    _html: trangHTML('Chưa có gì để duyệt',\n      '<h1>Chưa có báo cáo nào chờ duyệt</h1>'\n      + '<div class=\"bao bao-cho\">Đầu việc đang ở trạng thái <b>' + esc(t.status)\n      + '</b>. Nhân viên chưa bấm báo hoàn thành, nên chưa có gì để bạn duyệt.</div>'\n      + thongTin),\n    _write: false, _mail: false } }];\n}\n\nconst act = String(s.webhook_base).replace(/\\/+$/, '') + '/hr-duyet-pg';\n// --- chưa chọn: hiện phiếu duyệt\nif (quyetDinh !== 'approve' && quyetDinh !== 'reject') {\n  return [{ json: {\n    _html: trangHTML('Phiếu duyệt đầu việc',\n      '<h1>Phiếu duyệt đầu việc</h1>'\n      + '<p class=\"phu\">Kiểm tra kết quả nhân viên nộp rồi chọn một trong hai nút.</p>'\n      + thongTin\n      + '<form method=\"get\" action=\"' + esc(act) + '\">'\n      + '<input type=\"hidden\" name=\"t\" value=\"' + esc(t.task_id) + '\">'\n      + '<input type=\"hidden\" name=\"k\" value=\"' + esc(chuKy) + '\">'\n      + '<label for=\"note\">Nhận xét gửi nhân viên — bắt buộc ghi nếu chọn Chưa đạt</label>'\n      + '<textarea id=\"note\" name=\"note\" placeholder=\"Ví dụ: pull request còn thiếu phần kiểm thử, bổ sung rồi báo lại.\"></textarea>'\n      + '<button class=\"nut xanh\" type=\"submit\" name=\"act\" value=\"approve\">Duyệt — đạt</button>'\n      + '<button class=\"nut do\" type=\"submit\" name=\"act\" value=\"reject\">Chưa đạt</button>'\n      + '</form>'),\n    _write: false, _mail: false } }];\n}\n\nconst dat = quyetDinh === 'approve';\n\n// Chưa đạt mà không ghi lý do thì bắt ghi, nếu không nhân viên không biết sửa gì.\nif (!dat && !lyDo) {\n  return [{ json: {\n    _html: trangHTML('Thiếu lý do',\n      '<h1>Cần ghi lý do</h1>'\n      + '<div class=\"bao bao-loi\">Chọn <b>Chưa đạt</b> thì phải ghi nhận xét, '\n      + 'nếu không nhân viên không biết phải sửa gì.</div>'\n      + thongTin\n      + '<form method=\"get\" action=\"' + esc(act) + '\">'\n      + '<input type=\"hidden\" name=\"t\" value=\"' + esc(t.task_id) + '\">'\n      + '<input type=\"hidden\" name=\"k\" value=\"' + esc(chuKy) + '\">'\n      + '<label for=\"note\">Nhận xét gửi nhân viên</label>'\n      + '<textarea id=\"note\" name=\"note\"></textarea>'\n      + '<button class=\"nut do\" type=\"submit\" name=\"act\" value=\"reject\">Gửi — Chưa đạt</button>'\n      + '<button class=\"nut xanh\" type=\"submit\" name=\"act\" value=\"approve\">Đổi ý — Duyệt</button>'\n      + '</form>'),\n    _write: false, _mail: false } }];\n}\n\nconst html = dat\n  ? trangHTML('Đã duyệt',\n      '<h1>Đã duyệt xong</h1>'\n      + '<div class=\"bao bao-ok\">Trạng thái đầu việc chuyển sang <b>done</b>. '\n      + 'Email báo kết quả đã gửi cho nhân viên.</div>' + thongTin)\n  : trangHTML('Đã trả lại',\n      '<h1>Đã trả lại cho nhân viên</h1>'\n      + '<div class=\"bao bao-loi\">Trạng thái đầu việc quay về <b>đang làm</b>. '\n      + 'Nhân viên đã nhận email kèm nhận xét của bạn.</div>'\n      + thongTin\n      + '<table class=\"bang\">' + dongBang('Nhận xét đã gửi', lyDo) + '</table>');\n\nreturn [{ json: {\n  _html: html,\n  _write: true,\n  _mail: true,\n  dat,\n  ly_do: lyDo,\n  row: { task_id: t.task_id, decision: dat ? 'approved' : 'returned', hr_note: lyDo },\n  task: {\n    task_id: t.task_id, task_name: t.task_name, category: t.category,\n    employee_id: t.employee_id, employee_name: emp.full_name || t.employee_id,\n    employee_email: String(emp.email || '').trim(),\n    due_vn: hienThiNgay(t.due_date), course_id: t.course_id || '',\n  },\n} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2832,
+        2704
+      ],
+      "id": "f222b5f9-7739-4319-8ca2-5fd49e450226",
+      "name": "Xử lý duyệt"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json._html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        3056,
+        2704
+      ],
+      "id": "27c32bc7-40b0-40fa-821b-33a109ff7680",
+      "name": "Trả trang cho HR"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c4000000-0000-4000-8000-000000000032",
+              "leftValue": "={{ $json._write }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3280,
+        2704
+      ],
+      "id": "1c9adee5-7bb9-4355-840f-0b170378fb34",
+      "name": "Có cập nhật H?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with p as (select $1::jsonb as j),\nu as (\n  update public.onboarding_tasks o set\n    status = case when p.j->>'decision' = 'approved' then 'done' else 'in_progress' end,\n    completed_on = case when p.j->>'decision' = 'approved' then (now() at time zone 'Asia/Ho_Chi_Minh')::date else null end,\n    hr_review = p.j->>'decision',\n    hr_note = nullif(p.j->>'hr_note', ''),\n    reviewed_at = now()\n  from p\n  where o.task_id = p.j->>'task_id' and o.status = 'submitted'\n  returning o.status\n)\nselect (select count(*) from u)::int as updated, (select status from u limit 1) as status;",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify($json.row)] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        3504,
+        2704
+      ],
+      "id": "8bcdd946-66d0-4d7b-ab95-92c949533f97",
+      "name": "H · Lưu kết quả duyệt (PG)",
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function esc(v) { return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;'); }\nfunction khungMail(than) { return '<div style=\"font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#1f2328;max-width:580px\">' + than + '</div>'; }\n\nconst s = $('H · Đọc đầu việc (PG)').first().json.settings || {};\nconst d = $('Xử lý duyệt').first().json;\nconst saved = $input.first().json;\n\nif (!d._mail || !(Number(saved.updated) > 0)) return [{ json: { send: false } }];\n\nconst t = d.task;\nconst nguoiNhan = s.wf2_send_to_real_email === false ? (s.demo_email || s.hr_notify_email) : (t.employee_email || s.hr_notify_email);\nconst hop = (mau, chu) => '<div style=\"background:' + mau + ';border-radius:10px;padding:14px 16px;'\n  + 'font-size:14px;margin:0 0 18px\">' + chu + '</div>';\nconst chanTrang = '<p style=\"color:#8a929c;font-size:12px;border-top:1px solid #e3e6ea;padding-top:12px\">'\n  + 'ABC Tech · Email tự động từ hệ thống onboarding.</p>';\n\nconst body = d.dat\n  ? khungMail(\n      '<p>Chào ' + esc(t.employee_name) + ',</p>'\n      + hop('#e7f6ee', '<b style=\"color:#17603f\">HR đã duyệt đầu việc của bạn.</b> '\n        + 'Đầu việc <b>' + esc(t.task_id) + '</b> chuyển sang trạng thái hoàn tất.')\n      + '<p><b>' + esc(t.task_name) + '</b><br>'\n      + '<span style=\"color:#6b7280;font-size:13px\">Hạn ' + esc(t.due_vn) + '</span></p>'\n      + (d.ly_do ? '<p style=\"color:#6b7280;font-size:13px\">Nhận xét của HR: ' + esc(d.ly_do) + '</p>' : '')\n      + '<p>Cảm ơn bạn đã báo cáo đúng hạn. Các đầu việc còn lại sẽ được nhắc khi gần tới hạn.</p>'\n      + chanTrang)\n  : khungMail(\n      '<p>Chào ' + esc(t.employee_name) + ',</p>'\n      + hop('#fdeceb', '<b style=\"color:#8c2c22\">Đầu việc chưa đủ điều kiện hoàn thành.</b> '\n        + 'HR đã xem kết quả của đầu việc <b>' + esc(t.task_id) + '</b> và trả lại để bạn bổ sung.')\n      + '<p><b>' + esc(t.task_name) + '</b><br>'\n      + '<span style=\"color:#6b7280;font-size:13px\">Hạn ' + esc(t.due_vn) + '</span></p>'\n      + '<p style=\"border-left:3px solid #e0483a;padding:4px 0 4px 14px;margin:16px 0\">'\n      + '<b>HR nhận xét:</b><br>' + esc(d.ly_do) + '</p>'\n      + '<p>Bổ sung xong bạn bấm lại nút <b>Báo cáo đầu việc</b> trong email nhắc việc gần nhất. '\n      + 'Trạng thái hiện đang là <b>đang làm</b>, chưa bị tính là bỏ bê.</p>'\n      + chanTrang);\n\nreturn [{ json: {\n  send: s.wf2_dry_run !== true,\n  to: nguoiNhan,\n  subject: (d.dat ? '[Đã duyệt] ' : '[Cần bổ sung] ') + t.task_id + ' — ' + t.task_name,\n  body,\n} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3728,
+        2704
+      ],
+      "id": "6559646d-2145-4473-bfbd-daf1017c68e4",
+      "name": "Soạn mail kết quả duyệt"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c4000000-0000-4000-8000-000000000037",
+              "leftValue": "={{ $json.send }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3952,
+        2704
+      ],
+      "id": "7d94e839-3cc8-46df-8d7c-beae99cbccfb",
+      "name": "Gửi mail kết quả?"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.body }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        4176,
+        2608
+      ],
+      "id": "b14fc017-34bf-4808-ac4d-4c05ed8c30ac",
+      "name": "Gmail: kết quả duyệt",
+      "webhookId": "03fdce41-756c-439c-8682-d2655dc07759",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "UPgAUSUv5CgQdwJr",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Xử lý duyệt').first().json;\nconst saved = $('H · Lưu kết quả duyệt (PG)').first().json;\nconst t = d.task || {};\nconst ghi = Number(saved.updated) > 0;\nreturn [{ json: { logs: [{\n  entity_id: t.task_id || '', event: d.dat ? 'hr_duyet_task' : 'hr_tra_lai_task', level: ghi ? 'success' : 'warning',\n  message: 'HR ' + (d.dat ? 'DUYỆT' : 'TRẢ LẠI') + ' đầu việc ' + (t.task_id || '?')\n    + ' của ' + (t.employee_name || '?')\n    + (d.ly_do ? '. Nhận xét: ' + String(d.ly_do).replace(/\\.$/, '') : '')\n    + (ghi ? '.' : '. Không ghi được vì đầu việc không còn ở trạng thái chờ duyệt.'),\n}] } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4400,
+        2704
+      ],
+      "id": "5ea5d19f-9f33-4dc5-8ca5-359216e06686",
+      "name": "Ghi log nhánh H"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into public.automation_logs (workflow, entity_id, event, level, message, n8n_execution_id)\nselect 'WF2', nullif(x->>'entity_id', ''), x->>'event', x->>'level', x->>'message', $2\nfrom jsonb_array_elements($1::jsonb) as x\nreturning log_id;",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify($json.logs || []), String($execution.id)] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        4624,
+        2704
+      ],
+      "id": "d2d53809-f115-40ce-8ef3-468eb57249f4",
+      "name": "H · Ghi nhật ký (PG)",
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "# WORKFLOW 2 — ONBOARDING & ĐÀO TẠO (PostgreSQL)\n\nBản sao của WF2 đọc/ghi Supabase thay cho Google Sheets. Bản Sheets cũ vẫn giữ nguyên.\n\n| Nhánh | Khi nào chạy | Làm gì |\n|---|---|---|\n| **A** | 08:00 hằng ngày | Ứng viên `hired` chưa có hồ sơ nhân viên → tạo `employees`, `onboarding_tasks`, `trainings` (một giao dịch), mail chào mừng |\n| **B** | 08:30 thứ 2–6 | Quét tiến độ → nhắc nhân viên (có nút Báo cáo), báo HR việc của bộ phận khác; đồng bộ quyền công cụ và khoá học |\n| **C** | 09:00 hằng ngày | Đủ ngày thử việc + xong checklist + xong đào tạo → `official` |\n| **G** | nhân viên bấm nút | `/webhook/bao-cao-task-pg`: nộp tệp / link / ghi chú → `submitted` → mời HR duyệt |\n| **H** | HR bấm nút | `/webhook/hr-duyet-pg`: duyệt → `done`, trả lại → `in_progress` kèm nhận xét |\n\n## Cấu hình nằm trong bảng `app_settings`\n\n`webhook_base`, `link_secret`, `hr_notify_email`, `wf2_dry_run`, `wf2_send_to_real_email`, `demo_email`, `probation_days`, `reminder_warn_days`, `reminder_cooldown_days`, `blocked_cooldown_days`, `proof_drive_folder_id`, `require_proof`, `training_ai`.\n\nĐổi giá trị: `update app_settings set value = '<json>' where key = '<khoá>';` — không cần sửa workflow.\n\nMọi lần chạy ghi vào `automation_logs` (workflow = 'WF2').",
+        "color": 7,
+        "width": 900,
+        "height": 700
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1400,
+        592
+      ],
+      "id": "5c5a9301-e6cf-42b8-85e7-b71f25657455",
+      "name": "ĐỌC TRƯỚC"
+    },
+    {
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "action",
+              "type": "string"
+            },
+            {
+              "name": "employee_id",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        2160,
+        600
+      ],
+      "id": "47d281aa-ae97-48ab-82af-b062d71a6830",
+      "name": "Được cổng HR gọi"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "outputKey": "onboard",
+              "renameOutput": true,
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "onboard",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "remind",
+              "renameOutput": true,
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "remind",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        2400,
+        600
+      ],
+      "id": "a676ab9b-ff8d-42c6-8e99-f0eb451ea33c",
+      "name": "Yêu cầu từ cổng HR"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Chạy thủ công A": {
+      "main": [
+        [
+          {
+            "node": "A · Đọc ứng viên chờ onboarding (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A · Đọc ứng viên chờ onboarding (PG)": {
+      "main": [
+        [
+          {
+            "node": "Dựng gói onboarding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lịch A — 08:00 hằng ngày": {
+      "main": [
+        [
+          {
+            "node": "A · Đọc ứng viên chờ onboarding (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dựng gói onboarding": {
+      "main": [
+        [
+          {
+            "node": "Có ứng viên mới?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Có ứng viên mới?": {
+      "main": [
+        [
+          {
+            "node": "AI: gợi ý lộ trình đào tạo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log: không có ứng viên mới",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: gợi ý lộ trình đào tạo": {
+      "main": [
+        [
+          {
+            "node": "Chuẩn hóa gợi ý AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI: gợi ý lộ trình đào tạo",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chuẩn hóa gợi ý AI": {
+      "main": [
+        [
+          {
+            "node": "A · Tạo nhân viên, checklist, đào tạo (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A · Tạo nhân viên, checklist, đào tạo (PG)": {
+      "main": [
+        [
+          {
+            "node": "Soạn mail chào mừng",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ghi log nhánh A",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log: không có ứng viên mới": {
+      "main": [
+        [
+          {
+            "node": "A · Ghi nhật ký bỏ qua (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Soạn mail chào mừng": {
+      "main": [
+        [
+          {
+            "node": "Gửi mail chào mừng?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gửi mail chào mừng?": {
+      "main": [
+        [
+          {
+            "node": "Gmail: mail chào mừng",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ghi log nhánh A": {
+      "main": [
+        [
+          {
+            "node": "A · Ghi nhật ký (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lịch B — 08:30 ngày làm việc": {
+      "main": [
+        [
+          {
+            "node": "B · Đọc tiến độ onboarding (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B · Đọc tiến độ onboarding (PG)": {
+      "main": [
+        [
+          {
+            "node": "Quét tiến độ onboarding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quét tiến độ onboarding": {
+      "main": [
+        [
+          {
+            "node": "B · Cập nhật nhắc việc, quyền, đào tạo (PG)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Soạn mail nhắc việc",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ghi log nhánh B",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Soạn mail nhắc việc": {
+      "main": [
+        [
+          {
+            "node": "Gửi mail nhắc việc?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gửi mail nhắc việc?": {
+      "main": [
+        [
+          {
+            "node": "Gmail: nhắc việc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ghi log nhánh B": {
+      "main": [
+        [
+          {
+            "node": "B · Ghi nhật ký (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lịch C — 09:00 hằng ngày": {
+      "main": [
+        [
+          {
+            "node": "C · Đọc nhân viên thử việc (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C · Đọc nhân viên thử việc (PG)": {
+      "main": [
+        [
+          {
+            "node": "Quét hết thử việc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quét hết thử việc": {
+      "main": [
+        [
+          {
+            "node": "C · Chuyển chính thức (PG)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ghi log nhánh C",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "C · Chuyển chính thức (PG)": {
+      "main": [
+        [
+          {
+            "node": "Soạn mail hết thử việc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Soạn mail hết thử việc": {
+      "main": [
+        [
+          {
+            "node": "Gửi mail hết thử việc?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gửi mail hết thử việc?": {
+      "main": [
+        [
+          {
+            "node": "Gmail: hết thử việc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ghi log nhánh C": {
+      "main": [
+        [
+          {
+            "node": "C · Ghi nhật ký (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook nhân viên": {
+      "main": [
+        [
+          {
+            "node": "G · Đọc đầu việc (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "G · Đọc đầu việc (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "G · Đọc đầu việc (PG)": {
+      "main": [
+        [
+          {
+            "node": "Kiểm tra báo cáo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kiểm tra báo cáo": {
+      "main": [
+        [
+          {
+            "node": "Có tệp đính kèm?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Có tệp đính kèm?": {
+      "main": [
+        [
+          {
+            "node": "Tách tệp đính kèm",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Hoàn tất báo cáo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tách tệp đính kèm": {
+      "main": [
+        [
+          {
+            "node": "Drive: tải tệp lên",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive: tải tệp lên": {
+      "main": [
+        [
+          {
+            "node": "Gom link tệp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gom link tệp": {
+      "main": [
+        [
+          {
+            "node": "Hoàn tất báo cáo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hoàn tất báo cáo": {
+      "main": [
+        [
+          {
+            "node": "Trả trang cho nhân viên",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trả trang cho nhân viên": {
+      "main": [
+        [
+          {
+            "node": "Có cập nhật G?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Có cập nhật G?": {
+      "main": [
+        [
+          {
+            "node": "G · Lưu báo cáo (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "G · Lưu báo cáo (PG)": {
+      "main": [
+        [
+          {
+            "node": "Soạn mail mời HR duyệt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Soạn mail mời HR duyệt": {
+      "main": [
+        [
+          {
+            "node": "Gửi mail HR?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gửi mail HR?": {
+      "main": [
+        [
+          {
+            "node": "Gmail: mời HR duyệt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ghi log nhánh G",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: mời HR duyệt": {
+      "main": [
+        [
+          {
+            "node": "Ghi log nhánh G",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ghi log nhánh G": {
+      "main": [
+        [
+          {
+            "node": "G · Ghi nhật ký (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook HR": {
+      "main": [
+        [
+          {
+            "node": "H · Đọc đầu việc (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "H · Đọc đầu việc (PG)": {
+      "main": [
+        [
+          {
+            "node": "Xử lý duyệt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Xử lý duyệt": {
+      "main": [
+        [
+          {
+            "node": "Trả trang cho HR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trả trang cho HR": {
+      "main": [
+        [
+          {
+            "node": "Có cập nhật H?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Có cập nhật H?": {
+      "main": [
+        [
+          {
+            "node": "H · Lưu kết quả duyệt (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "H · Lưu kết quả duyệt (PG)": {
+      "main": [
+        [
+          {
+            "node": "Soạn mail kết quả duyệt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Soạn mail kết quả duyệt": {
+      "main": [
+        [
+          {
+            "node": "Gửi mail kết quả?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gửi mail kết quả?": {
+      "main": [
+        [
+          {
+            "node": "Gmail: kết quả duyệt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ghi log nhánh H",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: kết quả duyệt": {
+      "main": [
+        [
+          {
+            "node": "Ghi log nhánh H",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ghi log nhánh H": {
+      "main": [
+        [
+          {
+            "node": "H · Ghi nhật ký (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Được cổng HR gọi": {
+      "main": [
+        [
+          {
+            "node": "Yêu cầu từ cổng HR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Yêu cầu từ cổng HR": {
+      "main": [
+        [
+          {
+            "node": "A · Đọc ứng viên chờ onboarding (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "B · Đọc tiến độ onboarding (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "versionId": "08a7e2b6-c8c4-41ba-8379-9b2e517d4f8d",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [
+    {
+      "id": "46638b70-3b17-4001-a15e-d453fad490f0",
+      "name": "Nhánh A · Tạo hồ sơ nhân viên mới",
+      "description": "08:00 mỗi ngày, chạy tay, hoặc cổng HR gọi ngay khi HR bấm Nhận việc",
+      "nodeNames": [
+        "A · Đọc ứng viên chờ onboarding (PG)",
+        "Dựng gói onboarding",
+        "Có ứng viên mới?",
+        "AI: gợi ý lộ trình đào tạo",
+        "Google Gemini Chat Model",
+        "Chuẩn hóa gợi ý AI",
+        "A · Tạo nhân viên, checklist, đào tạo (PG)",
+        "Soạn mail chào mừng",
+        "Gửi mail chào mừng?",
+        "Gmail: mail chào mừng",
+        "Ghi log nhánh A",
+        "A · Ghi nhật ký (PG)",
+        "Log: không có ứng viên mới",
+        "A · Ghi nhật ký bỏ qua (PG)"
+      ]
+    },
+    {
+      "id": "d20eb4cf-2277-40dc-8747-bd971ccac5cc",
+      "name": "Nhánh B · Quét tiến độ và nhắc việc",
+      "description": "Nhắc việc trễ, vướng, sắp hạn; đồng bộ quyền công cụ và khoá học đã xong; ghi ngày nhắc gần nhất",
+      "nodeNames": [
+        "B · Đọc tiến độ onboarding (PG)",
+        "Quét tiến độ onboarding",
+        "B · Cập nhật nhắc việc, quyền, đào tạo (PG)",
+        "Soạn mail nhắc việc",
+        "Gửi mail nhắc việc?",
+        "Gmail: nhắc việc",
+        "Ghi log nhánh B",
+        "B · Ghi nhật ký (PG)"
+      ]
+    },
+    {
+      "id": "fe04b754-0e46-4fee-8938-c2c3bf1d5ad7",
+      "name": "Nhánh C · Hết thử việc",
+      "description": "Đủ ngày thử việc, xong checklist và đào tạo thì chuyển official và báo HR",
+      "nodeNames": [
+        "C · Đọc nhân viên thử việc (PG)",
+        "Quét hết thử việc",
+        "C · Chuyển chính thức (PG)",
+        "Soạn mail hết thử việc",
+        "Gửi mail hết thử việc?",
+        "Gmail: hết thử việc",
+        "Ghi log nhánh C",
+        "C · Ghi nhật ký (PG)"
+      ]
+    },
+    {
+      "id": "c41d41d5-38fc-4c5b-a31f-c096a7784763",
+      "name": "Nhánh G · Nhân viên nộp kết quả",
+      "description": "Trang báo cáo đầu việc: nộp tệp/link/ghi chú, lưu Drive, chuyển submitted, mời HR duyệt",
+      "nodeNames": [
+        "G · Đọc đầu việc (PG)",
+        "Kiểm tra báo cáo",
+        "Có tệp đính kèm?",
+        "Tách tệp đính kèm",
+        "Drive: tải tệp lên",
+        "Gom link tệp",
+        "Hoàn tất báo cáo",
+        "Trả trang cho nhân viên",
+        "Có cập nhật G?",
+        "G · Lưu báo cáo (PG)",
+        "Soạn mail mời HR duyệt",
+        "Gửi mail HR?",
+        "Gmail: mời HR duyệt",
+        "Ghi log nhánh G",
+        "G · Ghi nhật ký (PG)"
+      ]
+    },
+    {
+      "id": "0b772bf6-cacc-4569-9cf2-79910462fd05",
+      "name": "Nhánh H · HR duyệt đầu việc",
+      "description": "Phiếu duyệt: đạt thì done, chưa đạt thì trả về in_progress kèm nhận xét; báo kết quả cho nhân viên",
+      "nodeNames": [
+        "H · Đọc đầu việc (PG)",
+        "Xử lý duyệt",
+        "Trả trang cho HR",
+        "Có cập nhật H?",
+        "H · Lưu kết quả duyệt (PG)",
+        "Soạn mail kết quả duyệt",
+        "Gửi mail kết quả?",
+        "Gmail: kết quả duyệt",
+        "Ghi log nhánh H",
+        "H · Ghi nhật ký (PG)"
+      ]
+    }
+  ],
+  "id": "GBmJRCB3oAVW35So",
+  "tags": []
+}
