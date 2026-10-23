@@ -1,0 +1,15 @@
+# Thư viện cài bằng npm và bản build: tạo lại bằng `npm install`, `npm run build`
+node_modules/
+dist/
+
+# Cấu hình riêng từng máy (mẫu: frontend/.env.example)
+.env
+.env.local
+.env.*.local
+
+# Cấu hình trình soạn thảo
+.vscode/
+
+# Hệ điều hành
+.DS_Store
+Thumbs.db
