@@ -1,0 +1,1507 @@
+{
+  "name": "ABC Tech | API cổng HR",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "hr-api",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "http://localhost:5173,http://127.0.0.1:5173"
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "id": "79e28762-4385-4329-8164-abbe41a81b3b",
+      "name": "Yêu cầu từ cổng HR",
+      "webhookId": "72a4d47d-46e7-46a1-8fbb-300e9cfbb4e5"
+    },
+    {
+      "parameters": {
+        "url": "https://nyhxfsrlzgbhjskohfso.supabase.co/auth/v1/user",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "sb_publishable_H-bJ65VIv0_VU4DVYoXsaQ_O1Eq2NYl"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ $json.headers.authorization || 'Bearer none' }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        300
+      ],
+      "id": "fd5d5466-9ad9-4c25-ada9-aaa6da317870",
+      "name": "Xác minh phiên đăng nhập",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n  ($1 <> '' and coalesce((select s.value ? lower($1) from public.app_settings s where s.key = 'hr_accounts'), false)) as is_hr,\n  (select jsonb_object_agg(s.key, s.value) from public.app_settings s) as settings,\n  (select to_jsonb(x) from (\n     select c.candidate_id, c.full_name, c.email, c.status, c.job_id, j.title as job_title, c.is_sample,\n            (select jsonb_build_object('interview_id', i.interview_id, 'starts_at', i.starts_at, 'calendar_event_id', i.calendar_event_id)\n               from public.interviews i where i.candidate_id = c.candidate_id and i.status = 'scheduled'\n              order by i.starts_at desc limit 1) as interview,\n            (select jsonb_build_object('wait_id', w.wait_id, 'resume_url', w.resume_url) from public.workflow_waits w\n              where w.kind = 'wf1_hr_review' and w.entity_id = c.candidate_id and w.consumed_at is null\n              order by w.wait_id desc limit 1) as wait,\n            (select max(e.occurred_at) from public.candidate_events e\n              where e.candidate_id = c.candidate_id and e.to_status = 'awaiting_candidate') as invited_at\n       from public.candidates c join public.jobs j on j.job_id = c.job_id\n      where c.candidate_id = nullif($2, '')) x) as candidate,\n  (select to_jsonb(x) from (\n     select f.feedback_id, f.status, f.employee_id,\n            (select jsonb_build_object('wait_id', w.wait_id, 'resume_url', w.resume_url) from public.workflow_waits w\n              where w.kind = 'wf3_hr_review' and w.entity_id = f.feedback_id and w.consumed_at is null\n              order by w.wait_id desc limit 1) as wait\n       from public.feedback f where f.feedback_id = nullif($3, '')) x) as feedback,\n  (select to_jsonb(x) from (select t.task_id, t.status, t.employee_id, t.task_name\n       from public.onboarding_tasks t where t.task_id = nullif($4, '')) x) as task,\n  (select to_jsonb(x) from (select e.employee_id, e.full_name, e.employment_status\n       from public.employees e where e.employee_id = nullif($5, '')) x) as employee;",
+        "options": {
+          "queryReplacement": "={{ [ (Number($json.statusCode) === 200 && $json.body && $json.body.email) ? String($json.body.email) : '', String(($('Yêu cầu từ cổng HR').first().json.body || {}).candidate_id || ''), String(($('Yêu cầu từ cổng HR').first().json.body || {}).feedback_id || ''), String(($('Yêu cầu từ cổng HR').first().json.body || {}).task_id || ''), String(($('Yêu cầu từ cổng HR').first().json.body || {}).employee_id || '') ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        440,
+        300
+      ],
+      "id": "3dd02e2a-40e3-4731-b8f8-5ba405131ec9",
+      "name": "Đọc quyền và dữ liệu liên quan (PG)",
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Kiểm tra đăng nhập, quyền HR và trạng thái hồ sơ; chọn nhánh xử lý cho từng thao tác của giao diện.\nconst req = $('Yêu cầu từ cổng HR').first().json;\nconst auth = $('Xác minh phiên đăng nhập').first().json;\nconst db = $input.first().json;\nconst b = req.body || {};\nconst action = String(b.action || '');\nconst note = String(b.note || '').trim().slice(0, 2000);\nconst s = db.settings || {};\nconst out = (route, extra) => [{ json: { route, action, note, ok: true, ...extra } }];\nconst fail = (http, message) => out('error', { ok: false, http, message });\n\nif (Number(auth.statusCode) !== 200 || !auth.body || !auth.body.email) return fail(401, 'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.');\nif (!db.is_hr) return fail(403, 'Tài khoản này không có quyền vào cổng HR.');\n\nconst esc = v => String(v ?? '').replace(/[&<>\"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst wrap = (title, body) => '<div style=\"font-family:Arial,sans-serif;color:#243447;line-height:1.65;max-width:680px;margin:auto\"><div style=\"background:#142f4c;color:white;padding:22px 28px\"><b style=\"font-size:22px\">ABC Tech</b><br>Phòng Tuyển dụng</div><div style=\"padding:24px 28px\"><h2 style=\"font-size:20px\">' + esc(title) + '</h2>' + body + '<p>Trân trọng,<br><b>Bộ phận Tuyển dụng — ABC Tech</b><br><a href=\"mailto:whateverholding246@gmail.com\">whateverholding246@gmail.com</a></p></div></div>';\nconst p = v => '<p>' + v + '</p>';\nconst vn = (d, withTime) => {\n  const t = new Date(new Date(d).getTime() + 7 * 3600000), two = n => String(n).padStart(2, '0');\n  const day = two(t.getUTCDate()) + '/' + two(t.getUTCMonth() + 1) + '/' + t.getUTCFullYear();\n  return withTime ? two(t.getUTCHours()) + ':' + two(t.getUTCMinutes()) + ' ngày ' + day : day;\n};\nconst STATUS = { received: 'AI đang đọc CV', awaiting_hr: 'Chờ HR duyệt', hr_overdue: 'Quá hạn duyệt', on_hold: 'Tạm giữ', awaiting_candidate: 'Chờ ứng viên chọn giờ', needs_scheduling: 'Cần HR xếp lịch', interview_scheduled: 'Đã hẹn phỏng vấn', interviewed: 'Chờ kết quả phỏng vấn', hired: 'Nhận việc', rejected: 'Không phù hợp', withdrawn: 'Ứng viên rút hồ sơ' };\nconst blocked = c => fail(409, 'Hồ sơ ' + c.candidate_id + ' đang ở bước \"' + (STATUS[c.status] || c.status) + '\", không làm được thao tác này. Vui lòng tải lại trang.');\n// Chữ ký link giống WF2 (dùng chung link_secret) để gọi đúng webhook duyệt đầu việc\nfunction kyLink(id, secret) {\n  const t = String(id).toUpperCase() + '|' + String(secret);\n  let a = 5381, h = 2166136261;\n  for (let i = 0; i < t.length; i++) { a = ((a * 33) ^ t.charCodeAt(i)) >>> 0; h = ((h ^ t.charCodeAt(i)) * 16777619) >>> 0; }\n  return (a.toString(36) + h.toString(36)).slice(0, 16);\n}\n\nif (action === 'candidate.decide') {\n  const c = db.candidate;\n  if (!c) return fail(404, 'Không tìm thấy hồ sơ.');\n  const decision = String(b.decision || '');\n  const label = { invite: 'Mời phỏng vấn', hold: 'Tiếp tục xem xét', reject: 'Chưa phù hợp' }[decision];\n  if (!label) return fail(400, 'Quyết định không hợp lệ.');\n  // WF1 còn đứng chờ HR duyệt: gửi quyết định vào đúng form chờ, WF1 tự chạy tiếp như khi bấm trong email\n  if (c.wait && c.wait.resume_url && ['awaiting_hr', 'hr_overdue'].includes(c.status)) {\n    return out('resume', { candidate_id: c.candidate_id, resume_url: c.wait.resume_url, wait_id: c.wait.wait_id, field0: label, field1: note,\n      message: { invite: 'Đã mời phỏng vấn ' + c.full_name + '. Hệ thống đang đề xuất khung giờ và gửi thư cho ứng viên.', hold: 'Đã tạm giữ hồ sơ ' + c.full_name + '.', reject: 'Đã đóng hồ sơ ' + c.full_name + ' và gửi thư cảm ơn.' }[decision] });\n  }\n  if (decision === 'invite') {\n    if (!['awaiting_hr', 'hr_overdue', 'on_hold', 'needs_scheduling'].includes(c.status)) return blocked(c);\n    return out('invite', { candidate_id: c.candidate_id, message: 'Đã mời phỏng vấn ' + c.full_name + '. Hệ thống đang đề xuất khung giờ và gửi thư cho ứng viên.' });\n  }\n  if (decision === 'hold') {\n    if (!['awaiting_hr', 'hr_overdue', 'needs_scheduling'].includes(c.status)) return blocked(c);\n    return out('hold', { candidate_id: c.candidate_id, allowed: ['awaiting_hr', 'hr_overdue', 'needs_scheduling'], message: 'Đã tạm giữ hồ sơ ' + c.full_name + '.' });\n  }\n  const allowed = ['awaiting_hr', 'hr_overdue', 'on_hold', 'needs_scheduling', 'awaiting_candidate', 'interview_scheduled', 'interviewed'];\n  if (!allowed.includes(c.status)) return blocked(c);\n  const kind = c.status === 'interviewed' ? 'after' : ['awaiting_candidate', 'needs_scheduling', 'interview_scheduled'].includes(c.status) ? 'cancel' : 'review';\n  const job = esc(c.job_title);\n  const T = {\n    review: ['Kết quả xem xét hồ sơ', 'Cảm ơn bạn đã dành thời gian ứng tuyển vào vị trí ' + job + ' tại ABC Tech. Sau khi xem xét yêu cầu của vị trí và hồ sơ hiện tại, chúng tôi rất tiếc chưa thể mời bạn vào vòng tiếp theo trong đợt tuyển dụng này. Chúng tôi trân trọng sự quan tâm của bạn và chúc bạn sớm tìm được cơ hội phù hợp.'],\n    after: ['Kết quả phỏng vấn', 'Cảm ơn bạn đã dành thời gian tham gia buổi phỏng vấn cho vị trí ' + job + ' tại ABC Tech. Sau khi cân nhắc kỹ, chúng tôi rất tiếc chưa thể tiếp tục với hồ sơ của bạn trong đợt tuyển dụng này. Chúng tôi trân trọng sự quan tâm của bạn và chúc bạn sớm tìm được cơ hội phù hợp.'],\n    cancel: ['Cập nhật lời mời phỏng vấn', 'ABC Tech xin thông báo lời mời phỏng vấn cho vị trí ' + job + ' đã được huỷ; nếu bạn đã nhận lời mời Google Calendar, lịch đó cũng đã được huỷ. Chúng tôi rất tiếc chưa thể tiếp tục với hồ sơ của bạn trong đợt này và cảm ơn bạn đã quan tâm đến ABC Tech.'],\n  }[kind];\n  return out('reject', {\n    candidate_id: c.candidate_id, email: c.email, allowed, kind,\n    calendar_event_id: (c.interview && c.interview.calendar_event_id) || '',\n    mail_subject: '[ABC Tech] ' + T[0] + ' — ' + c.job_title + ' | ' + c.candidate_id,\n    mail_html: wrap(T[0], p('Chào bạn ' + esc(c.full_name) + ',') + p(T[1]) + p('Mã hồ sơ: ' + esc(c.candidate_id) + '.')),\n    log_message: 'Từ cổng HR: đóng hồ sơ ' + c.candidate_id + ' (' + (STATUS[c.status] || c.status) + ')' + (kind === 'cancel' ? ', huỷ lời mời phỏng vấn' : '') + '.',\n    message: 'Đã đóng hồ sơ ' + c.full_name + ' và gửi thư cảm ơn' + ((c.interview && c.interview.calendar_event_id) ? ', lịch phỏng vấn đã huỷ.' : '.'),\n  });\n}\n\nif (action === 'candidate.hire') {\n  const c = db.candidate;\n  if (!c) return fail(404, 'Không tìm thấy hồ sơ.');\n  if (c.status !== 'interviewed') return blocked(c);\n  return out('hire', { candidate_id: c.candidate_id, message: c.full_name + ' đã nhận việc. Hệ thống đang tạo hồ sơ nhân viên và checklist onboarding.' });\n}\n\nif (action === 'candidate.remind') {\n  const c = db.candidate;\n  if (!c) return fail(404, 'Không tìm thấy hồ sơ.');\n  if (c.status !== 'awaiting_candidate') return blocked(c);\n  const hours = Number(s.candidate_choice_hours) || 24;\n  const sent = c.invited_at ? new Date(c.invited_at) : new Date();\n  const until = new Date(sent.getTime() + hours * 3600000);\n  const subject = '[ABC Tech] Mời phỏng vấn — ' + c.job_title + ' | ' + c.candidate_id;\n  const body = 'ABC Tech đã gửi lời mời phỏng vấn vị trí ' + esc(c.job_title) + ' ngày ' + vn(sent) + '. Bạn vui lòng mở email \"' + esc(subject) + '\" và bấm \"Chọn lịch phỏng vấn\" trước ' + vn(until, true) + '. Nếu không tìm thấy email hoặc các khung giờ chưa phù hợp, bạn chỉ cần trả lời thư này.';\n  return out('remind_candidate', {\n    candidate_id: c.candidate_id, email: c.email,\n    mail_subject: '[ABC Tech] Nhắc chọn lịch phỏng vấn — ' + c.job_title + ' | ' + c.candidate_id,\n    mail_html: wrap('Nhắc chọn lịch phỏng vấn', p('Chào bạn ' + esc(c.full_name) + ',') + p(body) + p('Mã hồ sơ: ' + esc(c.candidate_id) + '.')),\n    log_message: 'Từ cổng HR: nhắc ' + c.candidate_id + ' chọn giờ phỏng vấn.',\n    message: 'Đã gửi thư nhắc ' + c.full_name + ' chọn giờ phỏng vấn.',\n  });\n}\n\nif (action === 'task.review') {\n  const t = db.task;\n  if (!t) return fail(404, 'Không tìm thấy đầu việc.');\n  if (t.status !== 'submitted') return fail(409, 'Đầu việc ' + t.task_id + ' không còn chờ duyệt. Vui lòng tải lại trang.');\n  const decision = String(b.decision || '');\n  if (!['approve', 'return'].includes(decision)) return fail(400, 'Quyết định không hợp lệ.');\n  if (decision === 'return' && !note) return fail(400, 'Cần ghi nhận xét khi trả lại đầu việc.');\n  const url = String(s.webhook_base || '').replace(/\\/+$/, '') + '/hr-duyet-pg?t=' + encodeURIComponent(t.task_id) + '&k=' + kyLink(t.task_id, s.link_secret)\n    + '&act=' + (decision === 'approve' ? 'approve' : 'reject') + '&note=' + encodeURIComponent(note);\n  return out('task_review', { task_id: t.task_id, review_url: url, expect: decision === 'approve' ? 'done' : 'in_progress' });\n}\n\nif (action === 'employee.remind') {\n  const e = db.employee;\n  if (!e) return fail(404, 'Không tìm thấy nhân viên.');\n  if (e.employment_status === 'resigned') return fail(409, 'Nhân viên đã nghỉ việc.');\n  return out('remind_employee', { employee_id: e.employee_id, full_name: e.full_name });\n}\n\nif (action === 'feedback.decide') {\n  const f = db.feedback;\n  if (!f) return fail(404, 'Không tìm thấy phản hồi.');\n  if (f.status !== 'pending_hr') return fail(409, 'Phản hồi ' + f.feedback_id + ' không còn chờ HR duyệt. Vui lòng tải lại trang.');\n  const decision = String(b.decision || '');\n  if (!['approve', 'decline'].includes(decision)) return fail(400, 'Quyết định không hợp lệ.');\n  const message = decision === 'approve' ? 'Đã duyệt và tạo việc hỗ trợ; nhân viên sẽ nhận email về bước tiếp theo.' : 'Đã ghi nhận không tạo việc hỗ trợ cho phản hồi ' + f.feedback_id + '.';\n  if (f.wait && f.wait.resume_url) {\n    return out('resume', { feedback_id: f.feedback_id, resume_url: f.wait.resume_url, wait_id: f.wait.wait_id,\n      field0: decision === 'approve' ? 'Duyệt kế hoạch hỗ trợ' : 'Chưa duyệt / Từ chối', field1: note, message });\n  }\n  return out('feedback_entry', { feedback_id: f.feedback_id, decision, message });\n}\n\nreturn fail(400, 'Thao tác không hợp lệ.');\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ],
+      "id": "bf9213b3-0f5c-40a9-ba8e-735a526cf4c9",
+      "name": "Phân loại yêu cầu"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "outputKey": "error",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "error",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true
+            },
+            {
+              "outputKey": "resume",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "resume",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true
+            },
+            {
+              "outputKey": "invite",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "invite",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true
+            },
+            {
+              "outputKey": "hold",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "hold",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true
+            },
+            {
+              "outputKey": "reject",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "reject",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true
+            },
+            {
+              "outputKey": "hire",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "hire",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true
+            },
+            {
+              "outputKey": "remind_candidate",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "remind_candidate",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true
+            },
+            {
+              "outputKey": "task_review",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "task_review",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true
+            },
+            {
+              "outputKey": "remind_employee",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "remind_employee",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true
+            },
+            {
+              "outputKey": "feedback_entry",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "feedback_entry",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        880,
+        300
+      ],
+      "id": "7493485c-d036-46c5-bb74-68564e55abfc",
+      "name": "Chuyển theo loại việc"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, message: $json.message } }}",
+        "options": {
+          "responseCode": "={{ $json.http || 400 }}"
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1120,
+        -260
+      ],
+      "id": "65054986-9cc8-4b19-a5eb-843f586b365c",
+      "name": "Trả lỗi"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.resume_url }}",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formData",
+              "name": "field-0",
+              "value": "={{ $json.field0 }}"
+            },
+            {
+              "parameterType": "formData",
+              "name": "field-1",
+              "value": "={{ $json.field1 }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        -100
+      ],
+      "id": "4a11db2b-7ffd-43c6-9e2e-6ea21e0eb8f9",
+      "name": "Gửi quyết định vào form chờ"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ Number($json.statusCode) >= 200 && Number($json.statusCode) < 300 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1340,
+        -100
+      ],
+      "id": "7ade693f-a871-434a-9df8-de3aace8c323",
+      "name": "Form chờ đã nhận?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, message: $('Phân loại yêu cầu').first().json.message } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1780,
+        300
+      ],
+      "id": "671463e7-bbec-4271-b006-11e7a8430a90",
+      "name": "Trả kết quả"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with u as (\n  update public.workflow_waits set consumed_at = now() where wait_id = nullif($1, '')::bigint and consumed_at is null returning 1\n)\nselect (select count(*) from u)::int as closed;",
+        "options": {
+          "queryReplacement": "={{ [String($('Phân loại yêu cầu').first().json.wait_id || '')] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1560,
+        40
+      ],
+      "id": "b54b029b-1d05-4fe9-86c3-ac520923d790",
+      "name": "Đóng link chờ hết hiệu lực (PG)",
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, message: 'Hồ sơ vừa thay đổi ở nơi khác hoặc lần chờ trong n8n đã kết thúc. Vui lòng tải lại trang rồi thử lại.' } }}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1780,
+        560
+      ],
+      "id": "e702233c-7d7c-4e04-8824-623c4ca3116e",
+      "name": "Trả xung đột"
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "VkTSE28DbMQ6wLUW",
+          "cachedResultName": "ABC Tech | Tuyển dụng v3 (PostgreSQL)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "action": "invite",
+            "candidate_id": "={{ $json.candidate_id }}",
+            "note": "={{ $json.note }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "action",
+              "displayName": "action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "candidate_id",
+              "displayName": "candidate_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "note",
+              "displayName": "note",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1120,
+        60
+      ],
+      "id": "2aa8bdc9-5231-495f-8238-8690aacdf5ab",
+      "name": "Gọi WF1 mời phỏng vấn"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with ctx as (select set_config('app.actor', 'hr', true) as actor),\nu as (\n  update public.candidates c\n     set status = 'on_hold',\n         hr_note = case when nullif($2, '') is null then c.hr_note else concat_ws(E'\\n', c.hr_note, $2) end\n    from ctx\n   where c.candidate_id = $1 and c.status = any(string_to_array($3, ','))\n  returning c.candidate_id\n), l as (\n  insert into public.automation_logs (workflow, entity_id, event, level, message, n8n_execution_id)\n  select 'WF1', $1, 'hr_hold', 'info', 'Từ cổng HR: tạm giữ hồ sơ ' || $1 || '.', $4 from u\n  returning 1\n)\nselect (select count(*) from u)::int as updated;",
+        "options": {
+          "queryReplacement": "={{ [$json.candidate_id, $json.note, ($json.allowed || []).join(','), String($execution.id)] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1120,
+        200
+      ],
+      "id": "2bc4a560-988b-4f5a-8cb3-a550091455b3",
+      "name": "Tạm giữ hồ sơ (PG)",
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ Number($json.updated) > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1340,
+        200
+      ],
+      "id": "5c2a2714-e8a0-4a46-8f0e-02356c6b5e7f",
+      "name": "Đã tạm giữ?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with ctx as (select set_config('app.actor', 'hr', true) as actor),\nu as (\n  update public.candidates c\n     set status = 'rejected',\n         hr_note = case when nullif($2, '') is null then c.hr_note else concat_ws(E'\\n', c.hr_note, $2) end\n    from ctx\n   where c.candidate_id = $1 and c.status = any(string_to_array($3, ','))\n  returning c.candidate_id\n), iv as (\n  update public.interviews i\n     set status = case when i.status = 'scheduled' then (case when $4 = 'after' then 'completed' else 'cancelled' end) else i.status end,\n         result = case when $4 = 'after' then 'fail' else i.result end\n   where i.candidate_id = $1 and exists (select 1 from u)\n     and (i.status = 'scheduled' or ($4 = 'after' and i.status = 'completed' and i.result is null))\n  returning 1\n), w as (\n  update public.workflow_waits set consumed_at = now()\n   where kind = 'wf1_hr_review' and entity_id = $1 and consumed_at is null and exists (select 1 from u)\n  returning 1\n), l as (\n  insert into public.automation_logs (workflow, entity_id, event, level, message, n8n_execution_id)\n  select 'WF1', $1, 'hr_rejected', 'info', $5, $6 from u\n  returning 1\n)\nselect (select count(*) from u)::int as updated;",
+        "options": {
+          "queryReplacement": "={{ [$json.candidate_id, $json.note, ($json.allowed || []).join(','), $json.kind, $json.log_message, String($execution.id)] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1120,
+        360
+      ],
+      "id": "3eacbd3f-ba47-471b-b4f5-ba34a50cd2e3",
+      "name": "Đóng hồ sơ ứng viên (PG)",
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ Number($json.updated) > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1340,
+        360
+      ],
+      "id": "72ada103-cc02-4014-ab62-8c9a53640865",
+      "name": "Đã đóng hồ sơ?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ !!$('Phân loại yêu cầu').first().json.calendar_event_id }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1560,
+        360
+      ],
+      "id": "a9db7858-0e78-4579-bb2d-195b5e423310",
+      "name": "Có lịch Google Calendar?"
+    },
+    {
+      "parameters": {
+        "resource": "event",
+        "operation": "delete",
+        "calendar": {
+          "__rl": true,
+          "mode": "id",
+          "value": "whateverholding246@gmail.com"
+        },
+        "eventId": "={{ $('Phân loại yêu cầu').first().json.calendar_event_id }}",
+        "options": {
+          "sendUpdates": "all"
+        }
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        1780,
+        440
+      ],
+      "id": "cfb229e5-8a1e-41ef-95b0-6f5c8077eabf",
+      "name": "Huỷ sự kiện phỏng vấn",
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "aQsKctAssbvHqg6L",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Phân loại yêu cầu').first().json.email }}",
+        "subject": "={{ $('Phân loại yêu cầu').first().json.mail_subject }}",
+        "message": "={{ $('Phân loại yêu cầu').first().json.mail_html }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "ABC Tech | Tuyển dụng",
+          "replyTo": "whateverholding246@gmail.com"
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2000,
+        300
+      ],
+      "id": "0412e5ff-2076-4e88-a733-b78d576d896f",
+      "name": "Gửi thư cho ứng viên",
+      "webhookId": "0660147b-b4a0-4f4d-92da-777a17eb177e",
+      "executeOnce": true,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "UPgAUSUv5CgQdwJr",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with ctx as (select set_config('app.actor', 'hr', true) as actor),\nu as (\n  update public.candidates c\n     set status = 'hired',\n         hr_note = case when nullif($2, '') is null then c.hr_note else concat_ws(E'\\n', c.hr_note, $2) end\n    from ctx\n   where c.candidate_id = $1 and c.status = 'interviewed'\n  returning c.candidate_id\n), iv as (\n  update public.interviews i\n     set result = 'pass', status = case when i.status = 'scheduled' then 'completed' else i.status end\n   where i.candidate_id = $1 and i.status in ('scheduled', 'completed') and exists (select 1 from u)\n  returning 1\n), l as (\n  insert into public.automation_logs (workflow, entity_id, event, level, message, n8n_execution_id)\n  select 'WF1', $1, 'hr_hired', 'success', 'Từ cổng HR: ' || $1 || ' nhận việc, chuyển sang WF2 tạo hồ sơ nhân viên.', $3 from u\n  returning 1\n)\nselect (select count(*) from u)::int as updated;",
+        "options": {
+          "queryReplacement": "={{ [$json.candidate_id, $json.note, String($execution.id)] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1120,
+        600
+      ],
+      "id": "7d966024-4de3-48a6-8e44-f0d47d0cfe9b",
+      "name": "Ghi nhận nhận việc (PG)",
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ Number($json.updated) > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1340,
+        600
+      ],
+      "id": "0f7dbc90-251b-4847-8bd6-c3d41fd71323",
+      "name": "Đã nhận việc?"
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "GBmJRCB3oAVW35So",
+          "cachedResultName": "ABC Tech — Onboarding & Đào tạo (PostgreSQL)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "action": "onboard",
+            "employee_id": ""
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "action",
+              "displayName": "action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "employee_id",
+              "displayName": "employee_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1560,
+        600
+      ],
+      "id": "f38f132b-2b2d-44d1-81cf-349a4fe28282",
+      "name": "Gọi WF2 tạo onboarding"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into public.automation_logs (workflow, entity_id, event, level, message, n8n_execution_id)\nvalues ('WF1', $1, 'candidate_reminded', 'info', $2, $3)\nreturning log_id;",
+        "options": {
+          "queryReplacement": "={{ [$json.candidate_id, $json.log_message, String($execution.id)] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1120,
+        760
+      ],
+      "id": "1add970b-c392-4d5c-9949-91b3b0675a68",
+      "name": "Ghi nhật ký nhắc ứng viên (PG)",
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.review_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        900
+      ],
+      "id": "740b5a54-d495-44b4-8914-dc58f1e78536",
+      "name": "Gọi WF2 duyệt đầu việc"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select t.task_id, t.status, (t.status = $2) as ok,\n       case when t.status <> $2 then 'Chưa cập nhật được đầu việc ' || t.task_id || ' (đang ở trạng thái ' || t.status || '). Vui lòng tải lại trang.'\n            when $2 = 'done' then 'Đã duyệt đầu việc ' || t.task_id || '; nhân viên nhận email xác nhận.'\n            else 'Đã trả lại đầu việc ' || t.task_id || ' kèm nhận xét; nhân viên nhận email.' end as message\nfrom (select 1) as one\nleft join public.onboarding_tasks t on t.task_id = $1;",
+        "options": {
+          "queryReplacement": "={{ [$('Phân loại yêu cầu').first().json.task_id, $('Phân loại yêu cầu').first().json.expect] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1340,
+        900
+      ],
+      "id": "ce72f2c5-d68b-43af-b30f-3cabe8738b8b",
+      "name": "Đọc kết quả duyệt đầu việc (PG)",
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: $json.ok !== false, message: $json.message } }}",
+        "options": {
+          "responseCode": "={{ $json.ok === false ? 409 : 200 }}"
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1780,
+        900
+      ],
+      "id": "de2c0090-c477-4169-b72e-7ec0e5073c06",
+      "name": "Trả kết quả kèm số liệu"
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "GBmJRCB3oAVW35So",
+          "cachedResultName": "ABC Tech — Onboarding & Đào tạo (PostgreSQL)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "action": "remind",
+            "employee_id": "={{ $json.employee_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "action",
+              "displayName": "action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "employee_id",
+              "displayName": "employee_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1120,
+        1060
+      ],
+      "id": "e76ed9ad-3593-48d4-9f42-822f4576f315",
+      "name": "Gọi WF2 nhắc nhân viên"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select count(t.*)::int as reminded, true as ok,\n       case when count(t.*) > 0 then 'Đã gửi nhắc ' || count(t.*) || ' đầu việc của ' || $2 || ' (nhân viên và người phụ trách).'\n            else $2 || ' không có đầu việc nào quá hạn, bị vướng hoặc sắp đến hạn để nhắc.' end as message\nfrom public.onboarding_tasks t\nwhere t.employee_id = $1 and t.last_reminded_on = (now() at time zone 'Asia/Ho_Chi_Minh')::date\n  and t.updated_at > now() - interval '10 minutes';",
+        "options": {
+          "queryReplacement": "={{ [$('Phân loại yêu cầu').first().json.employee_id, $('Phân loại yêu cầu').first().json.full_name] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1340,
+        1060
+      ],
+      "id": "d3856ded-f8b4-4d7f-881f-9c2dbfca09a9",
+      "name": "Đếm việc vừa nhắc (PG)",
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "Mwpsk2swUKrQgvSK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "4AwZvdhf7mS7tPad",
+          "cachedResultName": "ABC Tech | Phản hồi và Hiệu suất (PostgreSQL)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "action": "decide",
+            "feedback_id": "={{ $json.feedback_id }}",
+            "decision": "={{ $json.decision }}",
+            "note": "={{ $json.note }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "action",
+              "displayName": "action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "feedback_id",
+              "displayName": "feedback_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "decision",
+              "displayName": "decision",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "note",
+              "displayName": "note",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1120,
+        1220
+      ],
+      "id": "fbfbea73-9bf9-436a-b418-fbdafea12a1c",
+      "name": "Gọi WF3 duyệt phản hồi"
+    },
+    {
+      "parameters": {
+        "content": "## API cổng HR\nGiao diện HR gọi `POST /webhook/hr-api` kèm `Authorization: Bearer <phiên Supabase>` và JSON `{ action, ... }`.\nChỉ dùng cho thao tác có gửi email, đụng lịch hoặc đánh thức workflow đang chờ; đọc dữ liệu và ghi đơn giản đi thẳng Supabase.\n\n| action | dữ liệu | việc làm |\n|---|---|---|\n| candidate.decide | candidate_id, decision invite / hold / reject, note | WF1 đang chờ thì gửi vào form chờ; không thì mời qua lối vào WF1, tạm giữ (không gửi thư) hoặc đóng hồ sơ + thư cảm ơn + huỷ lịch |\n| candidate.hire | candidate_id, note | interviewed → hired, gọi WF2 tạo onboarding ngay |\n| candidate.remind | candidate_id | nhắc ứng viên chọn giờ |\n| task.review | task_id, decision approve / return, note | gọi webhook duyệt của WF2 |\n| employee.remind | employee_id | WF2 nhắc riêng người này, bỏ qua thời gian nghỉ giữa hai lần nhắc |\n| feedback.decide | feedback_id, decision approve / decline, note | WF3 đang chờ thì gửi vào form chờ; không thì gọi lối vào WF3 |\n\nTrả về `{ ok, message }`; 401/403 khi chưa đăng nhập hoặc không phải tài khoản HR, 409 khi hồ sơ đã đổi trạng thái.",
+        "width": 720,
+        "height": 460
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -300
+      ],
+      "id": "754e3b48-313e-4499-ac4c-a8a5bb6d2a8d",
+      "name": "Hướng dẫn API"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Yêu cầu từ cổng HR": {
+      "main": [
+        [
+          {
+            "node": "Xác minh phiên đăng nhập",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Xác minh phiên đăng nhập": {
+      "main": [
+        [
+          {
+            "node": "Đọc quyền và dữ liệu liên quan (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đọc quyền và dữ liệu liên quan (PG)": {
+      "main": [
+        [
+          {
+            "node": "Phân loại yêu cầu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Phân loại yêu cầu": {
+      "main": [
+        [
+          {
+            "node": "Chuyển theo loại việc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chuyển theo loại việc": {
+      "main": [
+        [
+          {
+            "node": "Trả lỗi",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gửi quyết định vào form chờ",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gọi WF1 mời phỏng vấn",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tạm giữ hồ sơ (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Đóng hồ sơ ứng viên (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ghi nhận nhận việc (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ghi nhật ký nhắc ứng viên (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gọi WF2 duyệt đầu việc",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gọi WF2 nhắc nhân viên",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gọi WF3 duyệt phản hồi",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gửi quyết định vào form chờ": {
+      "main": [
+        [
+          {
+            "node": "Form chờ đã nhận?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Form chờ đã nhận?": {
+      "main": [
+        [
+          {
+            "node": "Trả kết quả",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Đóng link chờ hết hiệu lực (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đóng link chờ hết hiệu lực (PG)": {
+      "main": [
+        [
+          {
+            "node": "Trả xung đột",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gọi WF1 mời phỏng vấn": {
+      "main": [
+        [
+          {
+            "node": "Trả kết quả",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tạm giữ hồ sơ (PG)": {
+      "main": [
+        [
+          {
+            "node": "Đã tạm giữ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đã tạm giữ?": {
+      "main": [
+        [
+          {
+            "node": "Trả kết quả",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả xung đột",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đóng hồ sơ ứng viên (PG)": {
+      "main": [
+        [
+          {
+            "node": "Đã đóng hồ sơ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đã đóng hồ sơ?": {
+      "main": [
+        [
+          {
+            "node": "Có lịch Google Calendar?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả xung đột",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Có lịch Google Calendar?": {
+      "main": [
+        [
+          {
+            "node": "Huỷ sự kiện phỏng vấn",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gửi thư cho ứng viên",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Huỷ sự kiện phỏng vấn": {
+      "main": [
+        [
+          {
+            "node": "Gửi thư cho ứng viên",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gửi thư cho ứng viên": {
+      "main": [
+        [
+          {
+            "node": "Trả kết quả",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ghi nhận nhận việc (PG)": {
+      "main": [
+        [
+          {
+            "node": "Đã nhận việc?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đã nhận việc?": {
+      "main": [
+        [
+          {
+            "node": "Gọi WF2 tạo onboarding",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả xung đột",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gọi WF2 tạo onboarding": {
+      "main": [
+        [
+          {
+            "node": "Trả kết quả",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ghi nhật ký nhắc ứng viên (PG)": {
+      "main": [
+        [
+          {
+            "node": "Gửi thư cho ứng viên",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gọi WF2 duyệt đầu việc": {
+      "main": [
+        [
+          {
+            "node": "Đọc kết quả duyệt đầu việc (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đọc kết quả duyệt đầu việc (PG)": {
+      "main": [
+        [
+          {
+            "node": "Trả kết quả kèm số liệu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gọi WF2 nhắc nhân viên": {
+      "main": [
+        [
+          {
+            "node": "Đếm việc vừa nhắc (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đếm việc vừa nhắc (PG)": {
+      "main": [
+        [
+          {
+            "node": "Trả kết quả kèm số liệu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gọi WF3 duyệt phản hồi": {
+      "main": [
+        [
+          {
+            "node": "Trả kết quả",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "versionId": "9beb9cd6-a820-49cb-a5d8-85e7476b14ce",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "id": "KwZnXjpmRtgirH8H",
+  "tags": []
+}
