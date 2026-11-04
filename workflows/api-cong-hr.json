@@ -6,17 +6,15 @@
         "httpMethod": "POST",
         "path": "hr-api",
         "responseMode": "responseNode",
-        "options": {
-          "allowedOrigins": "http://localhost:5173,http://127.0.0.1:5173"
-        }
+        "options": {}
       },
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
       "position": [
-        0,
-        300
+        64,
+        1312
       ],
-      "id": "79e28762-4385-4329-8164-abbe41a81b3b",
+      "id": "69cfb4e4-897d-4b15-9e78-566ae1f9d58a",
       "name": "Yêu cầu từ cổng HR",
       "webhookId": "72a4d47d-46e7-46a1-8fbb-300e9cfbb4e5"
     },
@@ -48,10 +46,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        220,
-        300
+        288,
+        1312
       ],
-      "id": "fd5d5466-9ad9-4c25-ada9-aaa6da317870",
+      "id": "ee0e8a88-69c6-4c64-b27e-b537a6926c46",
       "name": "Xác minh phiên đăng nhập",
       "executeOnce": true
     },
@@ -66,15 +64,15 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        440,
-        300
+        512,
+        1312
       ],
-      "id": "3dd02e2a-40e3-4731-b8f8-5ba405131ec9",
+      "id": "bb49a541-8fe0-4aa2-b6c9-f6065a331707",
       "name": "Đọc quyền và dữ liệu liên quan (PG)",
       "executeOnce": true,
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -86,10 +84,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        660,
-        300
+        736,
+        1312
       ],
-      "id": "bf9213b3-0f5c-40a9-ba8e-735a526cf4c9",
+      "id": "dcfad63a-93aa-419a-9b6f-b1406df436d0",
       "name": "Phân loại yêu cầu"
     },
     {
@@ -97,7 +95,6 @@
         "rules": {
           "values": [
             {
-              "outputKey": "error",
               "conditions": {
                 "options": {
                   "caseSensitive": true,
@@ -117,10 +114,10 @@
                 ],
                 "combinator": "and"
               },
-              "renameOutput": true
+              "renameOutput": true,
+              "outputKey": "error"
             },
             {
-              "outputKey": "resume",
               "conditions": {
                 "options": {
                   "caseSensitive": true,
@@ -140,10 +137,10 @@
                 ],
                 "combinator": "and"
               },
-              "renameOutput": true
+              "renameOutput": true,
+              "outputKey": "resume"
             },
             {
-              "outputKey": "invite",
               "conditions": {
                 "options": {
                   "caseSensitive": true,
@@ -163,10 +160,10 @@
                 ],
                 "combinator": "and"
               },
-              "renameOutput": true
+              "renameOutput": true,
+              "outputKey": "invite"
             },
             {
-              "outputKey": "hold",
               "conditions": {
                 "options": {
                   "caseSensitive": true,
@@ -186,10 +183,10 @@
                 ],
                 "combinator": "and"
               },
-              "renameOutput": true
+              "renameOutput": true,
+              "outputKey": "hold"
             },
             {
-              "outputKey": "reject",
               "conditions": {
                 "options": {
                   "caseSensitive": true,
@@ -209,10 +206,10 @@
                 ],
                 "combinator": "and"
               },
-              "renameOutput": true
+              "renameOutput": true,
+              "outputKey": "reject"
             },
             {
-              "outputKey": "hire",
               "conditions": {
                 "options": {
                   "caseSensitive": true,
@@ -232,10 +229,10 @@
                 ],
                 "combinator": "and"
               },
-              "renameOutput": true
+              "renameOutput": true,
+              "outputKey": "hire"
             },
             {
-              "outputKey": "remind_candidate",
               "conditions": {
                 "options": {
                   "caseSensitive": true,
@@ -255,10 +252,10 @@
                 ],
                 "combinator": "and"
               },
-              "renameOutput": true
+              "renameOutput": true,
+              "outputKey": "remind_candidate"
             },
             {
-              "outputKey": "task_review",
               "conditions": {
                 "options": {
                   "caseSensitive": true,
@@ -278,10 +275,10 @@
                 ],
                 "combinator": "and"
               },
-              "renameOutput": true
+              "renameOutput": true,
+              "outputKey": "task_review"
             },
             {
-              "outputKey": "remind_employee",
               "conditions": {
                 "options": {
                   "caseSensitive": true,
@@ -301,10 +298,10 @@
                 ],
                 "combinator": "and"
               },
-              "renameOutput": true
+              "renameOutput": true,
+              "outputKey": "remind_employee"
             },
             {
-              "outputKey": "feedback_entry",
               "conditions": {
                 "options": {
                   "caseSensitive": true,
@@ -324,7 +321,8 @@
                 ],
                 "combinator": "and"
               },
-              "renameOutput": true
+              "renameOutput": true,
+              "outputKey": "feedback_entry"
             }
           ]
         },
@@ -333,10 +331,10 @@
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.2,
       "position": [
-        880,
-        300
+        976,
+        1232
       ],
-      "id": "7493485c-d036-46c5-bb74-68564e55abfc",
+      "id": "588fca69-a4f5-4eac-96aa-549df41f8776",
       "name": "Chuyển theo loại việc"
     },
     {
@@ -350,10 +348,10 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        1120,
-        -260
+        1376,
+        112
       ],
-      "id": "65054986-9cc8-4b19-a5eb-843f586b365c",
+      "id": "df0474fc-f34f-4dff-9b7a-38291b39e5e3",
       "name": "Trả lỗi"
     },
     {
@@ -365,12 +363,10 @@
         "bodyParameters": {
           "parameters": [
             {
-              "parameterType": "formData",
               "name": "field-0",
               "value": "={{ $json.field0 }}"
             },
             {
-              "parameterType": "formData",
               "name": "field-1",
               "value": "={{ $json.field1 }}"
             }
@@ -389,10 +385,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1120,
-        -100
+        1376,
+        432
       ],
-      "id": "4a11db2b-7ffd-43c6-9e2e-6ea21e0eb8f9",
+      "id": "35713f48-de9b-4426-af9d-332bf803356e",
       "name": "Gửi quyết định vào form chờ"
     },
     {
@@ -422,10 +418,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1340,
-        -100
+        1600,
+        432
       ],
-      "id": "7ade693f-a871-434a-9df8-de3aace8c323",
+      "id": "cacd89ca-30f2-4628-9076-e7917002a858",
       "name": "Form chờ đã nhận?"
     },
     {
@@ -439,10 +435,10 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        1780,
-        300
+        2912,
+        1088
       ],
-      "id": "671463e7-bbec-4271-b006-11e7a8430a90",
+      "id": "67c1943a-9b04-426f-a807-00413df33506",
       "name": "Trả kết quả"
     },
     {
@@ -456,15 +452,15 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        1560,
-        40
+        1824,
+        560
       ],
-      "id": "b54b029b-1d05-4fe9-86c3-ac520923d790",
+      "id": "e5a74d78-44ff-46c7-b9a4-f625ff34ad45",
       "name": "Đóng link chờ hết hiệu lực (PG)",
       "executeOnce": true,
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -480,19 +476,18 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        1780,
-        560
+        2912,
+        1712
       ],
-      "id": "e702233c-7d7c-4e04-8824-623c4ca3116e",
+      "id": "9e5c1d26-1144-4b84-9ce4-0d5129c5998c",
       "name": "Trả xung đột"
     },
     {
       "parameters": {
-        "source": "database",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "VkTSE28DbMQ6wLUW",
+          "value": "dJ8xVIgUWRAYaSVn",
           "cachedResultName": "ABC Tech | Tuyển dụng v3 (PostgreSQL)"
         },
         "workflowInputs": {
@@ -535,7 +530,6 @@
           "attemptToConvertTypes": false,
           "convertFieldsToString": true
         },
-        "mode": "once",
         "options": {
           "waitForSubWorkflow": false
         }
@@ -543,10 +537,10 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        1120,
-        60
+        1376,
+        912
       ],
-      "id": "2aa8bdc9-5231-495f-8238-8690aacdf5ab",
+      "id": "57db5f54-4977-484b-85ab-adc07267ecb9",
       "name": "Gọi WF1 mời phỏng vấn"
     },
     {
@@ -560,15 +554,15 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        1120,
-        200
+        1376,
+        1104
       ],
-      "id": "2bc4a560-988b-4f5a-8cb3-a550091455b3",
+      "id": "d9ac8952-573d-46a6-979e-2e22f3d2d1ae",
       "name": "Tạm giữ hồ sơ (PG)",
       "executeOnce": true,
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -600,10 +594,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1340,
-        200
+        1600,
+        1104
       ],
-      "id": "5c2a2714-e8a0-4a46-8f0e-02356c6b5e7f",
+      "id": "215899bd-5eab-49b2-9862-9efdea62cebd",
       "name": "Đã tạm giữ?"
     },
     {
@@ -617,15 +611,15 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        1120,
-        360
+        1376,
+        1392
       ],
-      "id": "3eacbd3f-ba47-471b-b4f5-ba34a50cd2e3",
+      "id": "02171ec9-769a-4f0e-8312-9402e53fde0f",
       "name": "Đóng hồ sơ ứng viên (PG)",
       "executeOnce": true,
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -657,10 +651,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1340,
-        360
+        1600,
+        1392
       ],
-      "id": "72ada103-cc02-4014-ab62-8c9a53640865",
+      "id": "e5588913-7cd0-48ac-908b-cccf1d2c8c3c",
       "name": "Đã đóng hồ sơ?"
     },
     {
@@ -690,15 +684,14 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1560,
-        360
+        1824,
+        1360
       ],
-      "id": "a9db7858-0e78-4579-bb2d-195b5e423310",
+      "id": "cfb8d7cd-c830-434e-8dbc-6db9ca813398",
       "name": "Có lịch Google Calendar?"
     },
     {
       "parameters": {
-        "resource": "event",
         "operation": "delete",
         "calendar": {
           "__rl": true,
@@ -713,15 +706,15 @@
       "type": "n8n-nodes-base.googleCalendar",
       "typeVersion": 1.3,
       "position": [
-        1780,
-        440
+        2048,
+        1360
       ],
-      "id": "cfb229e5-8a1e-41ef-95b0-6f5c8077eabf",
+      "id": "e855b2c8-a854-4300-bbe6-9b2ba238aa49",
       "name": "Huỷ sự kiện phỏng vấn",
       "onError": "continueRegularOutput",
       "credentials": {
         "googleCalendarOAuth2Api": {
-          "id": "aQsKctAssbvHqg6L",
+          "id": "zS7x6xNhJMoIo83s",
           "name": "Google Calendar account"
         }
       }
@@ -740,16 +733,16 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        2000,
-        300
+        2272,
+        1744
       ],
-      "id": "0412e5ff-2076-4e88-a733-b78d576d896f",
+      "id": "b8b1d76f-7810-4035-a689-daa9f40a2855",
       "name": "Gửi thư cho ứng viên",
-      "webhookId": "0660147b-b4a0-4f4d-92da-777a17eb177e",
       "executeOnce": true,
+      "webhookId": "ce169d21-dfc7-4729-8880-d301a22acb14",
       "credentials": {
         "gmailOAuth2": {
-          "id": "UPgAUSUv5CgQdwJr",
+          "id": "fw6f1aLTh9rJ2pbq",
           "name": "Gmail account"
         }
       }
@@ -765,15 +758,15 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        1120,
-        600
+        1376,
+        1568
       ],
-      "id": "7d966024-4de3-48a6-8e44-f0d47d0cfe9b",
+      "id": "a96d1467-9eab-437e-8437-5e1931fe41e9",
       "name": "Ghi nhận nhận việc (PG)",
       "executeOnce": true,
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -805,19 +798,18 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1340,
-        600
+        1600,
+        1568
       ],
-      "id": "0f7dbc90-251b-4847-8bd6-c3d41fd71323",
+      "id": "a7aec11a-2d39-408b-b835-18bf9fa6f008",
       "name": "Đã nhận việc?"
     },
     {
       "parameters": {
-        "source": "database",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "GBmJRCB3oAVW35So",
+          "value": "EiXcYOuZZCLiNsSQ",
           "cachedResultName": "ABC Tech — Onboarding & Đào tạo (PostgreSQL)"
         },
         "workflowInputs": {
@@ -850,7 +842,6 @@
           "attemptToConvertTypes": false,
           "convertFieldsToString": true
         },
-        "mode": "once",
         "options": {
           "waitForSubWorkflow": false
         }
@@ -858,10 +849,10 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        1560,
-        600
+        1824,
+        1520
       ],
-      "id": "f38f132b-2b2d-44d1-81cf-349a4fe28282",
+      "id": "3d63617a-4f54-43e6-b700-918aaae708ee",
       "name": "Gọi WF2 tạo onboarding"
     },
     {
@@ -875,15 +866,15 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        1120,
-        760
+        1376,
+        1744
       ],
-      "id": "1add970b-c392-4d5c-9949-91b3b0675a68",
+      "id": "56b12139-fc65-45a0-a24e-879c60344d3d",
       "name": "Ghi nhật ký nhắc ứng viên (PG)",
       "executeOnce": true,
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -903,10 +894,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1120,
-        900
+        1376,
+        2064
       ],
-      "id": "740b5a54-d495-44b4-8914-dc58f1e78536",
+      "id": "8c4373d1-fca5-4795-bd42-b2d2c9775d1f",
       "name": "Gọi WF2 duyệt đầu việc"
     },
     {
@@ -920,15 +911,15 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        1340,
-        900
+        1600,
+        2064
       ],
-      "id": "ce72f2c5-d68b-43af-b30f-3cabe8738b8b",
+      "id": "84906188-95a8-4040-a42e-d0897bf3cb51",
       "name": "Đọc kết quả duyệt đầu việc (PG)",
       "executeOnce": true,
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -944,19 +935,18 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        1780,
-        900
+        2912,
+        2144
       ],
-      "id": "de2c0090-c477-4169-b72e-7ec0e5073c06",
+      "id": "4590b297-4708-4070-aa93-42ca73369591",
       "name": "Trả kết quả kèm số liệu"
     },
     {
       "parameters": {
-        "source": "database",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "GBmJRCB3oAVW35So",
+          "value": "EiXcYOuZZCLiNsSQ",
           "cachedResultName": "ABC Tech — Onboarding & Đào tạo (PostgreSQL)"
         },
         "workflowInputs": {
@@ -989,7 +979,6 @@
           "attemptToConvertTypes": false,
           "convertFieldsToString": true
         },
-        "mode": "once",
         "options": {
           "waitForSubWorkflow": true
         }
@@ -997,10 +986,10 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        1120,
-        1060
+        1376,
+        2224
       ],
-      "id": "e76ed9ad-3593-48d4-9f42-822f4576f315",
+      "id": "bc37f04c-b19d-4c8b-b86e-c0a7d0bf16cf",
       "name": "Gọi WF2 nhắc nhân viên"
     },
     {
@@ -1014,26 +1003,25 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        1340,
-        1060
+        1600,
+        2224
       ],
-      "id": "d3856ded-f8b4-4d7f-881f-9c2dbfca09a9",
+      "id": "0961827e-2e6a-46dc-a242-46386ae05786",
       "name": "Đếm việc vừa nhắc (PG)",
       "executeOnce": true,
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
     },
     {
       "parameters": {
-        "source": "database",
         "workflowId": {
           "__rl": true,
           "mode": "id",
-          "value": "4AwZvdhf7mS7tPad",
+          "value": "MJhJJNeQswiXKrQS",
           "cachedResultName": "ABC Tech | Phản hồi và Hiệu suất (PostgreSQL)"
         },
         "workflowInputs": {
@@ -1086,7 +1074,6 @@
           "attemptToConvertTypes": false,
           "convertFieldsToString": true
         },
-        "mode": "once",
         "options": {
           "waitForSubWorkflow": false
         }
@@ -1094,10 +1081,10 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        1120,
-        1220
+        1824,
+        2544
       ],
-      "id": "fbfbea73-9bf9-436a-b418-fbdafea12a1c",
+      "id": "7c5aff2b-dd80-401d-84a9-640d1fa7095f",
       "name": "Gọi WF3 duyệt phản hồi"
     },
     {
@@ -1109,11 +1096,123 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -40,
-        -300
+        0,
+        560
       ],
-      "id": "754e3b48-313e-4499-ac4c-a8a5bb6d2a8d",
+      "id": "102ce285-ee26-4758-96bf-604e6b38a7c6",
       "name": "Hướng dẫn API"
+    },
+    {
+      "parameters": {
+        "content": "## ① Nhận và kiểm tra yêu cầu\nXác minh phiên đăng nhập → đọc quyền HR và hồ sơ liên quan → **Phân loại yêu cầu** kiểm tra rồi gắn `route` → **Chuyển theo loại việc** rẽ sang đúng nhánh bên phải.",
+        "color": 7,
+        "width": 1136,
+        "height": 560
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        1056
+      ],
+      "id": "063efbc8-305e-4337-9499-ea519dae9a6f",
+      "name": "Ghi chú · Nhận và kiểm tra"
+    },
+    {
+      "parameters": {
+        "content": "## Lỗi kiểm tra\nChưa đăng nhập, không phải tài khoản HR, thiếu/sai dữ liệu hoặc hồ sơ không ở đúng bước → trả lỗi ngay, không làm gì thêm.",
+        "color": 3,
+        "width": 1104,
+        "height": 288
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1328,
+        0
+      ],
+      "id": "fa794e8c-0c7e-4532-95d2-bf8ab2fb4eb4",
+      "name": "Ghi chú · Lỗi kiểm tra"
+    },
+    {
+      "parameters": {
+        "content": "## A. WF1 / WF3 đang đợi HR duyệt\nGửi quyết định thẳng vào form chờ, luồng gốc tự chạy tiếp như khi HR bấm trong email. Form đã đóng → khoá link chờ và báo xung đột.",
+        "color": 6,
+        "width": 1104,
+        "height": 416
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1328,
+        320
+      ],
+      "id": "7af41d29-aaa6-459d-9a78-62bfb6d2adaa",
+      "name": "Ghi chú · A. Form chờ"
+    },
+    {
+      "parameters": {
+        "content": "## B. Hồ sơ ứng viên (WF1)\nMỗi hàng một việc, từ trên xuống: mời phỏng vấn (gọi WF1) · tạm giữ · đóng hồ sơ + huỷ lịch + thư cảm ơn · nhận việc (gọi WF2) · nhắc ứng viên chọn giờ.",
+        "color": 4,
+        "width": 1104,
+        "height": 1120
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1328,
+        800
+      ],
+      "id": "6b3f9e95-1242-4253-afcd-30420b4b72e1",
+      "name": "Ghi chú · B. Ứng viên"
+    },
+    {
+      "parameters": {
+        "content": "## C. Onboarding (WF2)\nDuyệt / trả lại đầu việc · nhắc nhân viên. Sau khi WF2 chạy xong, đọc lại DB để báo kết quả kèm số liệu.",
+        "color": 2,
+        "width": 1104,
+        "height": 448
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1328,
+        1952
+      ],
+      "id": "7da56a58-db27-4f54-9cd7-0b9ca7cbe76a",
+      "name": "Ghi chú · C. Onboarding"
+    },
+    {
+      "parameters": {
+        "content": "## D. Phản hồi nhân viên (WF3)\nWF3 không còn đứng chờ: gọi lối vào WF3 để duyệt hoặc từ chối phản hồi.",
+        "color": 5,
+        "width": 1104,
+        "height": 288
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1328,
+        2432
+      ],
+      "id": "1f307423-a4eb-4bc2-85ed-214e6fe0f49e",
+      "name": "Ghi chú · D. Phản hồi"
+    },
+    {
+      "parameters": {
+        "content": "## ② Trả lời cổng HR\nThành công → **Trả kết quả**. Hồ sơ vừa đổi ở nơi khác → **Trả xung đột** (409).",
+        "color": 7,
+        "width": 360,
+        "height": 1392
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2832,
+        928
+      ],
+      "id": "7a7c347c-7f4c-4f19-9400-ad8c5e95be63",
+      "name": "Ghi chú · Trả lời"
     }
   ],
   "pinData": {},
@@ -1492,16 +1591,17 @@
       ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1",
+    "binaryMode": "separate",
     "availableInMCP": true
   },
-  "versionId": "9beb9cd6-a820-49cb-a5d8-85e7476b14ce",
+  "versionId": "1c681263-2b35-45b5-b9ce-67b95c252380",
   "meta": {
     "templateCredsSetupCompleted": true
   },
   "nodeGroups": [],
-  "id": "KwZnXjpmRtgirH8H",
+  "id": "yAZFKveqOFjpXjQd",
   "tags": []
 }

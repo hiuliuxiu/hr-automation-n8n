@@ -6,10 +6,10 @@
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
       "position": [
-        2400,
+        1504,
         128
       ],
-      "id": "e391ac95-b3f6-41dd-867d-a97a5251044a",
+      "id": "9db7afda-2d93-4508-88f9-38f14f4992c8",
       "name": "Chạy thủ công A"
     },
     {
@@ -21,14 +21,14 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        2640,
+        1744,
         208
       ],
-      "id": "6c33caf9-5eb6-4cf0-a156-bec10323c59c",
+      "id": "14f091e4-11ff-448e-bc90-3c4c6c1b3089",
       "name": "A · Đọc ứng viên chờ onboarding (PG)",
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -47,10 +47,10 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        2400,
+        1504,
         288
       ],
-      "id": "0b8b5a67-d430-48f2-a86d-5d93e7538f21",
+      "id": "d47b3803-1f3d-4171-8a3f-1179e72512fa",
       "name": "Lịch A — 08:00 hằng ngày"
     },
     {
@@ -60,10 +60,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2880,
+        1984,
         208
       ],
-      "id": "4478b65b-523d-4479-82b4-78658177f9fd",
+      "id": "685dc1c8-ec9d-4696-9edf-86d0f8e599e8",
       "name": "Dựng gói onboarding"
     },
     {
@@ -95,10 +95,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        3104,
+        2208,
         208
       ],
-      "id": "70a42179-8fb9-4d93-8564-4fbb465068ad",
+      "id": "1f51df8d-8fc5-4e4a-98de-234daa909475",
       "name": "Có ứng viên mới?"
     },
     {
@@ -109,10 +109,10 @@
       "type": "@n8n/n8n-nodes-langchain.chainLlm",
       "typeVersion": 1.6,
       "position": [
-        3328,
+        2432,
         96
       ],
-      "id": "7a5cd687-398d-45df-bed9-32fd8db99f69",
+      "id": "3938b960-cfe9-4959-9555-5a6840e5b4da",
       "name": "AI: gợi ý lộ trình đào tạo",
       "onError": "continueRegularOutput"
     },
@@ -124,10 +124,10 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
       "typeVersion": 1,
       "position": [
-        3328,
+        2432,
         304
       ],
-      "id": "c2f519ce-e34f-4d8c-916e-ff8b7e992f19",
+      "id": "97a0043b-666a-4a41-ac3b-54471df2238c",
       "name": "Google Gemini Chat Model"
     },
     {
@@ -137,10 +137,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3568,
+        2672,
         96
       ],
-      "id": "4e63073c-0680-4538-b524-9316d7674b16",
+      "id": "9eefdd15-5387-4264-821e-64deaaf4e896",
       "name": "Chuẩn hóa gợi ý AI"
     },
     {
@@ -148,21 +148,21 @@
         "operation": "executeQuery",
         "query": "with p as (select $1::jsonb as j),\nemp as (\n  insert into public.employees (candidate_id, job_id, full_name, email, start_date, manager, buddy, is_sample)\n  select p.j->>'candidate_id', p.j->>'job_id', p.j->>'full_name', p.j->>'email', (p.j->>'start_date')::date,\n         nullif(p.j->>'manager', ''), nullif(p.j->>'buddy', ''), coalesce((p.j->>'is_sample')::boolean, false)\n  from p\n  on conflict (candidate_id) do nothing\n  returning employee_id\n),\ntasks as (\n  insert into public.onboarding_tasks (employee_id, template_id, task_name, category, owner_role, due_date, course_id)\n  select emp.employee_id, nullif(t->>'template_id', ''), t->>'task_name', t->>'category', t->>'owner_role',\n         (t->>'due_date')::date, nullif(t->>'course_id', '')\n  from emp, p, jsonb_array_elements(p.j->'tasks') as t\n  returning task_id\n),\ntrs as (\n  insert into public.trainings (employee_id, course_id, source, assigned_on, due_on, cost_vnd, note)\n  select emp.employee_id, r->>'course_id', r->>'source', (r->>'assigned_on')::date, nullif(r->>'due_on', '')::date,\n         nullif(r->>'cost_vnd', '')::numeric, nullif(r->>'note', '')\n  from emp, p, jsonb_array_elements(p.j->'trainings') as r\n  returning training_id\n)\nselect (select employee_id from emp) as employee_id,\n       (select count(*) from tasks)::int as task_count,\n       (select count(*) from trs)::int as training_count;",
         "options": {
-          "queryReplacement": "={{ [JSON.stringify($json)] }}",
-          "queryBatching": "independently"
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [JSON.stringify($json)] }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        3808,
+        2912,
         96
       ],
-      "id": "697be880-1818-4e54-bf67-318c58c61c8e",
+      "id": "480fbe9d-2123-4fe5-92b5-16b5fb409b1e",
       "name": "A · Tạo nhân viên, checklist, đào tạo (PG)",
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -174,10 +174,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3328,
+        2432,
         448
       ],
-      "id": "ca0831b7-d4b2-4927-9067-2468a29f074a",
+      "id": "9c149a1b-fc5b-4da2-b521-90afbcc5a08c",
       "name": "Log: không có ứng viên mới"
     },
     {
@@ -191,15 +191,15 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        3568,
+        2672,
         448
       ],
-      "id": "8e6cca13-df7d-4408-b788-bb2dede025f3",
+      "id": "1b17d9aa-6210-468c-bb71-df6a1960cbd5",
       "name": "A · Ghi nhật ký bỏ qua (PG)",
       "executeOnce": true,
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -211,10 +211,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4048,
+        3152,
         0
       ],
-      "id": "2bb1d64e-b321-41d7-a169-6d46d5fd27cc",
+      "id": "7a8700ab-47f2-4401-84a1-ac8b1d4fc7f4",
       "name": "Soạn mail chào mừng"
     },
     {
@@ -246,10 +246,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        4272,
+        3376,
         0
       ],
-      "id": "3f7cf559-4b86-43d7-ab61-4aecd3a01f80",
+      "id": "aa0598fb-4a9c-4d52-9a3c-0965179edc72",
       "name": "Gửi mail chào mừng?"
     },
     {
@@ -265,15 +265,15 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        4496,
+        3600,
         0
       ],
-      "id": "77ab5388-a7fb-4006-85de-1900c39e802d",
+      "id": "24aba9e6-5356-41f4-958a-43c43585e9e6",
       "name": "Gmail: mail chào mừng",
       "webhookId": "19035824-7c4a-4798-b7f5-11f679f225c5",
       "credentials": {
         "gmailOAuth2": {
-          "id": "UPgAUSUv5CgQdwJr",
+          "id": "fw6f1aLTh9rJ2pbq",
           "name": "Gmail account"
         }
       }
@@ -285,10 +285,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4048,
+        3152,
         208
       ],
-      "id": "5f8f188f-970b-4765-bfb5-3906d91f2302",
+      "id": "c3f60288-ed7e-41ab-a382-2c324ccec69f",
       "name": "Ghi log nhánh A"
     },
     {
@@ -302,15 +302,15 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        4272,
+        3376,
         208
       ],
-      "id": "e3bb68ed-e4b2-497f-a453-3e8a0b6a0833",
+      "id": "cae1bcdb-ef8e-49f5-bac6-7146369b6512",
       "name": "A · Ghi nhật ký (PG)",
       "executeOnce": true,
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -329,10 +329,10 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        2400,
+        1504,
         960
       ],
-      "id": "df630a77-3858-414b-a2d6-d79cd94ea325",
+      "id": "172c1b96-5ccb-46e7-8561-7dc6ece02cc5",
       "name": "Lịch B — 08:30 ngày làm việc"
     },
     {
@@ -346,14 +346,14 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        2640,
+        1744,
         960
       ],
-      "id": "48c06036-db0f-4789-93a2-5328379b5695",
+      "id": "f8959918-6fca-4f87-8109-1ee2b9b42733",
       "name": "B · Đọc tiến độ onboarding (PG)",
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -365,10 +365,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2880,
+        1984,
         960
       ],
-      "id": "c8051853-4085-4eb4-aca8-bd37ff7ca011",
+      "id": "8cfd7b76-9103-46ad-9a7c-f9f3afee5367",
       "name": "Quét tiến độ onboarding"
     },
     {
@@ -382,15 +382,15 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        3120,
+        2224,
         800
       ],
-      "id": "240bf303-3ea7-419b-b127-0930ff7418b3",
+      "id": "ef0e0ba4-4b31-4b41-8ad9-a73b433c07b3",
       "name": "B · Cập nhật nhắc việc, quyền, đào tạo (PG)",
       "executeOnce": true,
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -402,10 +402,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3120,
+        2224,
         960
       ],
-      "id": "0304ea07-1307-4143-ad53-654d3a50800c",
+      "id": "1be03d09-7cf9-4b1a-8eb6-bdde52fa6bf8",
       "name": "Soạn mail nhắc việc"
     },
     {
@@ -437,10 +437,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        3344,
+        2448,
         960
       ],
-      "id": "c76c2745-6c95-408b-a15a-ab6c473f8198",
+      "id": "2533669e-88fc-455f-9faf-5303ef63ff4e",
       "name": "Gửi mail nhắc việc?"
     },
     {
@@ -455,15 +455,15 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        3568,
+        2672,
         960
       ],
-      "id": "5496325f-a2bb-4cd8-b512-370a21a83faa",
+      "id": "e42ae419-27fd-4a86-a7a8-4973fcb0e99d",
       "name": "Gmail: nhắc việc",
       "webhookId": "318c212a-eed8-462d-be7e-2b423495b04c",
       "credentials": {
         "gmailOAuth2": {
-          "id": "UPgAUSUv5CgQdwJr",
+          "id": "fw6f1aLTh9rJ2pbq",
           "name": "Gmail account"
         }
       }
@@ -475,10 +475,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3120,
+        2224,
         1120
       ],
-      "id": "764b06b7-91d0-4f52-88f1-80a4d45dd934",
+      "id": "ba794f03-bfb7-4142-b9d2-465d30feb254",
       "name": "Ghi log nhánh B"
     },
     {
@@ -492,15 +492,15 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        3344,
+        2448,
         1120
       ],
-      "id": "4f04d66a-72b0-4a92-899d-c0b57b28cd70",
+      "id": "a07e2663-5c8c-4693-90c2-fa141220fc1d",
       "name": "B · Ghi nhật ký (PG)",
       "executeOnce": true,
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -519,10 +519,10 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        2400,
+        1504,
         1600
       ],
-      "id": "0251e34e-6df6-4de6-a9df-b456c3dbcb67",
+      "id": "fa58bc3b-834f-42c6-898f-ba39b746ef08",
       "name": "Lịch C — 09:00 hằng ngày"
     },
     {
@@ -534,14 +534,14 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        2640,
+        1744,
         1600
       ],
-      "id": "22331241-321d-4edb-818c-77c6b9e6337f",
+      "id": "9cc018d9-a97d-46f8-b15b-c25cbcd6bf03",
       "name": "C · Đọc nhân viên thử việc (PG)",
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -553,10 +553,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2880,
+        1984,
         1600
       ],
-      "id": "92643ab2-513d-4187-bb1c-712b67f5a315",
+      "id": "80597012-b352-4b03-9561-d67b62d8c4ca",
       "name": "Quét hết thử việc"
     },
     {
@@ -570,15 +570,15 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        3120,
+        2224,
         1520
       ],
-      "id": "d75c4418-bdf2-4d33-a76d-9e1af3b7eb8d",
+      "id": "2cb73ff7-86a4-4893-9237-6f966cf4e2bf",
       "name": "C · Chuyển chính thức (PG)",
       "executeOnce": true,
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -590,10 +590,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3344,
+        2448,
         1520
       ],
-      "id": "b426d83c-8a78-4f04-a4c7-5e68d7dce611",
+      "id": "64e24904-0dda-4d4a-b236-97d88f037bf3",
       "name": "Soạn mail hết thử việc"
     },
     {
@@ -625,10 +625,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        3568,
+        2672,
         1520
       ],
-      "id": "cee3dccc-1b80-4a8f-af9e-34872f839666",
+      "id": "be1e43a2-1494-48cc-ac8f-800df4634c98",
       "name": "Gửi mail hết thử việc?"
     },
     {
@@ -644,15 +644,15 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        3792,
+        2896,
         1520
       ],
-      "id": "220821f3-5ee3-4bb5-bcfc-9583268cf501",
+      "id": "4fb177a7-7970-4521-99d8-e3382462d8e7",
       "name": "Gmail: hết thử việc",
       "webhookId": "7026fd1f-fb89-4ced-a484-93cbffed4e1d",
       "credentials": {
         "gmailOAuth2": {
-          "id": "UPgAUSUv5CgQdwJr",
+          "id": "fw6f1aLTh9rJ2pbq",
           "name": "Gmail account"
         }
       }
@@ -664,10 +664,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3120,
+        2224,
         1696
       ],
-      "id": "654268f0-ea9c-42ce-8166-8304a2bc9edd",
+      "id": "d329bba8-3d8d-4e70-b318-b268ba696f65",
       "name": "Ghi log nhánh C"
     },
     {
@@ -681,15 +681,15 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        3344,
+        2448,
         1696
       ],
-      "id": "2efaf3f4-bd71-4154-a828-bffb924db984",
+      "id": "6576c16d-63cb-4045-886a-2957db185278",
       "name": "C · Ghi nhật ký (PG)",
       "executeOnce": true,
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -707,10 +707,10 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        2384,
+        1488,
         2224
       ],
-      "id": "b0674235-b891-42fa-815f-72c7ccf497ad",
+      "id": "bc339b76-beb0-4d0a-8e68-5c5ecdf9551d",
       "name": "Webhook nhân viên",
       "webhookId": "68cf1535-0949-41dc-8c3e-cd11e6bca2bf"
     },
@@ -725,15 +725,15 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        2608,
+        1712,
         2224
       ],
-      "id": "34a46669-74a5-4c51-8374-332add629933",
+      "id": "da643050-1e9c-4904-8cce-9a5843df1cf7",
       "name": "G · Đọc đầu việc (PG)",
       "executeOnce": true,
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -745,10 +745,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2832,
+        1936,
         2224
       ],
-      "id": "f05a3e9a-0988-4f32-b016-dde947c3d863",
+      "id": "d69b23a0-70c1-4dbf-8513-78b4687fa068",
       "name": "Kiểm tra báo cáo"
     },
     {
@@ -780,10 +780,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        3056,
+        2160,
         2224
       ],
-      "id": "188a74f3-ef8c-4178-a021-977ebeda6f1b",
+      "id": "80fc759a-7fce-4afb-a8c2-218678aefa4f",
       "name": "Có tệp đính kèm?"
     },
     {
@@ -793,10 +793,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3280,
+        2384,
         2080
       ],
-      "id": "a5a81388-c51e-477f-b58e-40b976de3f5a",
+      "id": "16032b37-4036-4535-91a9-df2859ac434a",
       "name": "Tách tệp đính kèm"
     },
     {
@@ -820,15 +820,15 @@
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
       "position": [
-        3504,
+        2608,
         2080
       ],
-      "id": "e3734ca1-2be4-42ea-b823-c71adcfe8d87",
+      "id": "77115c58-0d12-4fd7-85d5-efd6635754b9",
       "name": "Drive: tải tệp lên",
       "retryOnFail": true,
       "credentials": {
         "googleDriveOAuth2Api": {
-          "id": "cGdNRQ5XaqWdkq2s",
+          "id": "7hF7yoih5CImFHH5",
           "name": "Google Drive account"
         }
       }
@@ -840,10 +840,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3728,
+        2832,
         2080
       ],
-      "id": "c49b496b-06e7-43f4-a856-76b45755bb3e",
+      "id": "39b00d35-1ea5-475e-bb50-228bb5c0dc3c",
       "name": "Gom link tệp"
     },
     {
@@ -853,10 +853,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3952,
+        3056,
         2224
       ],
-      "id": "96213ee9-6aa6-4860-8d35-49a69b6b8712",
+      "id": "7d5da976-6c13-46f8-8bee-b0cec2ff70e6",
       "name": "Hoàn tất báo cáo"
     },
     {
@@ -877,10 +877,10 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        4176,
+        3280,
         2224
       ],
-      "id": "195c4ccb-4e5d-4132-b18e-675454968037",
+      "id": "d10df121-1d15-4657-b03f-54fcdfcbd07b",
       "name": "Trả trang cho nhân viên"
     },
     {
@@ -912,10 +912,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        4400,
+        3504,
         2224
       ],
-      "id": "16fe0251-ed9c-4d5b-9e66-802addb5d84c",
+      "id": "453cf231-db36-4fe3-bc37-6ff994a6a4dd",
       "name": "Có cập nhật G?"
     },
     {
@@ -929,14 +929,14 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        4624,
+        3728,
         2224
       ],
-      "id": "50a4a94e-65e6-4a6d-bcc2-c44eacbcaa65",
+      "id": "e3b2e7dc-db67-4c37-96ca-ee951dadb13c",
       "name": "G · Lưu báo cáo (PG)",
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -948,10 +948,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4848,
+        3952,
         2224
       ],
-      "id": "051cd7e1-9a6a-4823-b5fa-47f9ba867658",
+      "id": "96956db2-df3b-44d1-9457-42c586674519",
       "name": "Soạn mail mời HR duyệt"
     },
     {
@@ -983,10 +983,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        5072,
+        4176,
         2224
       ],
-      "id": "9dbc7ae1-d6a3-4d62-9d78-b84ad12cf265",
+      "id": "0f1e4c2e-7f43-482c-a996-d74164c803f5",
       "name": "Gửi mail HR?"
     },
     {
@@ -1001,15 +1001,15 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        5296,
+        4400,
         2128
       ],
-      "id": "897e7326-8f3a-4828-a3a3-d0da3126c567",
+      "id": "ddd5779a-0e98-4664-8358-899da512cad7",
       "name": "Gmail: mời HR duyệt",
       "webhookId": "e90ec00d-220c-4e88-88ff-f165464cf1ad",
       "credentials": {
         "gmailOAuth2": {
-          "id": "UPgAUSUv5CgQdwJr",
+          "id": "fw6f1aLTh9rJ2pbq",
           "name": "Gmail account"
         }
       }
@@ -1021,10 +1021,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5520,
+        4624,
         2224
       ],
-      "id": "78267e80-6279-4b28-b2f7-dee09927da45",
+      "id": "28bfa6d0-4a51-4b76-ac8e-5632ed52f466",
       "name": "Ghi log nhánh G"
     },
     {
@@ -1038,15 +1038,15 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        5744,
+        4848,
         2224
       ],
-      "id": "f8134c1f-d30b-4b99-9139-80e0996b37ee",
+      "id": "a244e31a-a984-4261-80c0-3b13714806d3",
       "name": "G · Ghi nhật ký (PG)",
       "executeOnce": true,
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -1060,10 +1060,10 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        2384,
+        1488,
         2704
       ],
-      "id": "25c239be-9462-4598-8c57-93b18dfb2cff",
+      "id": "43262b79-3e4b-429e-8ca4-0b1799f8c590",
       "name": "Webhook HR",
       "webhookId": "3183646e-744e-4c6e-8aab-34542142ee56"
     },
@@ -1078,14 +1078,14 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        2608,
+        1712,
         2704
       ],
-      "id": "df99234d-e397-4482-8472-f1f2c7d3a9f4",
+      "id": "117627af-dab5-4308-ad1c-8999a6fcbf5d",
       "name": "H · Đọc đầu việc (PG)",
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -1097,10 +1097,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2832,
+        1936,
         2704
       ],
-      "id": "f222b5f9-7739-4319-8ca2-5fd49e450226",
+      "id": "dadac147-095a-4762-b75d-1361f4ca0733",
       "name": "Xử lý duyệt"
     },
     {
@@ -1121,10 +1121,10 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        3056,
+        2160,
         2704
       ],
-      "id": "27c32bc7-40b0-40fa-821b-33a109ff7680",
+      "id": "35268c4f-cbf6-41bf-87d7-65b761b8693b",
       "name": "Trả trang cho HR"
     },
     {
@@ -1156,10 +1156,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        3280,
+        2384,
         2704
       ],
-      "id": "1c9adee5-7bb9-4355-840f-0b170378fb34",
+      "id": "5e4791d0-0073-419f-8c5d-b85e4968b527",
       "name": "Có cập nhật H?"
     },
     {
@@ -1173,14 +1173,14 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        3504,
+        2608,
         2704
       ],
-      "id": "8bcdd946-66d0-4d7b-ab95-92c949533f97",
+      "id": "aaf60402-93c6-4075-a68c-c31d327537b6",
       "name": "H · Lưu kết quả duyệt (PG)",
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -1192,10 +1192,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3728,
+        2832,
         2704
       ],
-      "id": "6559646d-2145-4473-bfbd-daf1017c68e4",
+      "id": "2a0694ab-768f-49e6-ae0d-0c1b0caca663",
       "name": "Soạn mail kết quả duyệt"
     },
     {
@@ -1227,10 +1227,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        3952,
+        3056,
         2704
       ],
-      "id": "7d94e839-3cc8-46df-8d7c-beae99cbccfb",
+      "id": "956f1123-d60f-4c7b-aa0f-62c419431f1c",
       "name": "Gửi mail kết quả?"
     },
     {
@@ -1245,15 +1245,15 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        4176,
+        3280,
         2608
       ],
-      "id": "b14fc017-34bf-4808-ac4d-4c05ed8c30ac",
+      "id": "b92d8a21-ab89-4cf8-9315-3230afc356a3",
       "name": "Gmail: kết quả duyệt",
       "webhookId": "03fdce41-756c-439c-8682-d2655dc07759",
       "credentials": {
         "gmailOAuth2": {
-          "id": "UPgAUSUv5CgQdwJr",
+          "id": "fw6f1aLTh9rJ2pbq",
           "name": "Gmail account"
         }
       }
@@ -1265,10 +1265,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4400,
+        3504,
         2704
       ],
-      "id": "5ea5d19f-9f33-4dc5-8ca5-359216e06686",
+      "id": "4b360e76-db57-4cd4-802e-8b535a439ca5",
       "name": "Ghi log nhánh H"
     },
     {
@@ -1282,15 +1282,15 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [
-        4624,
+        3728,
         2704
       ],
-      "id": "d2d53809-f115-40ce-8ef3-468eb57249f4",
+      "id": "a3d827a9-009e-4a0a-a388-98c0ab6be40c",
       "name": "H · Ghi nhật ký (PG)",
       "executeOnce": true,
       "credentials": {
         "postgres": {
-          "id": "Mwpsk2swUKrQgvSK",
+          "id": "13NK6Lur6RRAj7oh",
           "name": "Postgres account"
         }
       }
@@ -1298,31 +1298,28 @@
     {
       "parameters": {
         "content": "# WORKFLOW 2 — ONBOARDING & ĐÀO TẠO (PostgreSQL)\n\nBản sao của WF2 đọc/ghi Supabase thay cho Google Sheets. Bản Sheets cũ vẫn giữ nguyên.\n\n| Nhánh | Khi nào chạy | Làm gì |\n|---|---|---|\n| **A** | 08:00 hằng ngày | Ứng viên `hired` chưa có hồ sơ nhân viên → tạo `employees`, `onboarding_tasks`, `trainings` (một giao dịch), mail chào mừng |\n| **B** | 08:30 thứ 2–6 | Quét tiến độ → nhắc nhân viên (có nút Báo cáo), báo HR việc của bộ phận khác; đồng bộ quyền công cụ và khoá học |\n| **C** | 09:00 hằng ngày | Đủ ngày thử việc + xong checklist + xong đào tạo → `official` |\n| **G** | nhân viên bấm nút | `/webhook/bao-cao-task-pg`: nộp tệp / link / ghi chú → `submitted` → mời HR duyệt |\n| **H** | HR bấm nút | `/webhook/hr-duyet-pg`: duyệt → `done`, trả lại → `in_progress` kèm nhận xét |\n\n## Cấu hình nằm trong bảng `app_settings`\n\n`webhook_base`, `link_secret`, `hr_notify_email`, `wf2_dry_run`, `wf2_send_to_real_email`, `demo_email`, `probation_days`, `reminder_warn_days`, `reminder_cooldown_days`, `blocked_cooldown_days`, `proof_drive_folder_id`, `require_proof`, `training_ai`.\n\nĐổi giá trị: `update app_settings set value = '<json>' where key = '<khoá>';` — không cần sửa workflow.\n\nMọi lần chạy ghi vào `automation_logs` (workflow = 'WF2').",
-        "color": 7,
+        "height": 700,
         "width": 900,
-        "height": 700
+        "color": 7
       },
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        1400,
-        592
+        0,
+        224
       ],
-      "id": "5c5a9301-e6cf-42b8-85e7-b71f25657455",
+      "id": "73d49072-4006-4cf0-9edf-5f062fdd2ab5",
       "name": "ĐỌC TRƯỚC"
     },
     {
       "parameters": {
-        "inputSource": "workflowInputs",
         "workflowInputs": {
           "values": [
             {
-              "name": "action",
-              "type": "string"
+              "name": "action"
             },
             {
-              "name": "employee_id",
-              "type": "string"
+              "name": "employee_id"
             }
           ]
         }
@@ -1330,10 +1327,10 @@
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
       "position": [
-        2160,
-        600
+        1264,
+        608
       ],
-      "id": "47d281aa-ae97-48ab-82af-b062d71a6830",
+      "id": "c6b4eb69-b548-4679-aaa8-e90dec3802c0",
       "name": "Được cổng HR gọi"
     },
     {
@@ -1341,8 +1338,6 @@
         "rules": {
           "values": [
             {
-              "outputKey": "onboard",
-              "renameOutput": true,
               "conditions": {
                 "options": {
                   "caseSensitive": true,
@@ -1361,11 +1356,11 @@
                   }
                 ],
                 "combinator": "and"
-              }
+              },
+              "renameOutput": true,
+              "outputKey": "onboard"
             },
             {
-              "outputKey": "remind",
-              "renameOutput": true,
               "conditions": {
                 "options": {
                   "caseSensitive": true,
@@ -1384,7 +1379,9 @@
                   }
                 ],
                 "combinator": "and"
-              }
+              },
+              "renameOutput": true,
+              "outputKey": "remind"
             }
           ]
         },
@@ -1393,10 +1390,10 @@
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.2,
       "position": [
-        2400,
-        600
+        1504,
+        608
       ],
-      "id": "a676ab9b-ff8d-42c6-8e99-f0eb451ea33c",
+      "id": "8b283e6e-6958-4d7d-9d49-1dbdb50d8cff",
       "name": "Yêu cầu từ cổng HR"
     }
   ],
@@ -2048,20 +2045,20 @@
       ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1",
+    "binaryMode": "separate",
     "availableInMCP": true
   },
-  "versionId": "08a7e2b6-c8c4-41ba-8379-9b2e517d4f8d",
+  "versionId": "785dce9b-88b4-47f7-8fb7-dfc5b46edf4b",
   "meta": {
     "templateCredsSetupCompleted": true
   },
   "nodeGroups": [
     {
-      "id": "46638b70-3b17-4001-a15e-d453fad490f0",
+      "id": "6f8d1135-95ef-437a-ac2a-fbdfb35c3040",
       "name": "Nhánh A · Tạo hồ sơ nhân viên mới",
-      "description": "08:00 mỗi ngày, chạy tay, hoặc cổng HR gọi ngay khi HR bấm Nhận việc",
       "nodeNames": [
         "A · Đọc ứng viên chờ onboarding (PG)",
         "Dựng gói onboarding",
@@ -2077,12 +2074,12 @@
         "A · Ghi nhật ký (PG)",
         "Log: không có ứng viên mới",
         "A · Ghi nhật ký bỏ qua (PG)"
-      ]
+      ],
+      "description": "08:00 mỗi ngày, chạy tay, hoặc cổng HR gọi ngay khi HR bấm Nhận việc"
     },
     {
-      "id": "d20eb4cf-2277-40dc-8747-bd971ccac5cc",
+      "id": "5222e8b9-5f69-44dd-9ddc-ffc43cfc1bdb",
       "name": "Nhánh B · Quét tiến độ và nhắc việc",
-      "description": "Nhắc việc trễ, vướng, sắp hạn; đồng bộ quyền công cụ và khoá học đã xong; ghi ngày nhắc gần nhất",
       "nodeNames": [
         "B · Đọc tiến độ onboarding (PG)",
         "Quét tiến độ onboarding",
@@ -2092,12 +2089,12 @@
         "Gmail: nhắc việc",
         "Ghi log nhánh B",
         "B · Ghi nhật ký (PG)"
-      ]
+      ],
+      "description": "Nhắc việc trễ, vướng, sắp hạn; đồng bộ quyền công cụ và khoá học đã xong; ghi ngày nhắc gần nhất"
     },
     {
-      "id": "fe04b754-0e46-4fee-8938-c2c3bf1d5ad7",
+      "id": "ebd19c03-aca5-45ae-a507-d006b12074b6",
       "name": "Nhánh C · Hết thử việc",
-      "description": "Đủ ngày thử việc, xong checklist và đào tạo thì chuyển official và báo HR",
       "nodeNames": [
         "C · Đọc nhân viên thử việc (PG)",
         "Quét hết thử việc",
@@ -2107,12 +2104,12 @@
         "Gmail: hết thử việc",
         "Ghi log nhánh C",
         "C · Ghi nhật ký (PG)"
-      ]
+      ],
+      "description": "Đủ ngày thử việc, xong checklist và đào tạo thì chuyển official và báo HR"
     },
     {
-      "id": "c41d41d5-38fc-4c5b-a31f-c096a7784763",
+      "id": "0c14f9d9-0f7d-4be0-a700-087986351bd6",
       "name": "Nhánh G · Nhân viên nộp kết quả",
-      "description": "Trang báo cáo đầu việc: nộp tệp/link/ghi chú, lưu Drive, chuyển submitted, mời HR duyệt",
       "nodeNames": [
         "G · Đọc đầu việc (PG)",
         "Kiểm tra báo cáo",
@@ -2129,12 +2126,12 @@
         "Gmail: mời HR duyệt",
         "Ghi log nhánh G",
         "G · Ghi nhật ký (PG)"
-      ]
+      ],
+      "description": "Trang báo cáo đầu việc: nộp tệp/link/ghi chú, lưu Drive, chuyển submitted, mời HR duyệt"
     },
     {
-      "id": "0b772bf6-cacc-4569-9cf2-79910462fd05",
+      "id": "6fa60e48-fe75-402d-b189-a91c9dc56750",
       "name": "Nhánh H · HR duyệt đầu việc",
-      "description": "Phiếu duyệt: đạt thì done, chưa đạt thì trả về in_progress kèm nhận xét; báo kết quả cho nhân viên",
       "nodeNames": [
         "H · Đọc đầu việc (PG)",
         "Xử lý duyệt",
@@ -2146,9 +2143,10 @@
         "Gmail: kết quả duyệt",
         "Ghi log nhánh H",
         "H · Ghi nhật ký (PG)"
-      ]
+      ],
+      "description": "Phiếu duyệt: đạt thì done, chưa đạt thì trả về in_progress kèm nhận xét; báo kết quả cho nhân viên"
     }
   ],
-  "id": "GBmJRCB3oAVW35So",
+  "id": "EiXcYOuZZCLiNsSQ",
   "tags": []
 }
