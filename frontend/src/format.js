@@ -4,7 +4,7 @@ export const vnd = (v) => (v === 0 ? '0 ₫' : nf.format(v) + ' ₫');
 export const pct = (v, d = 0) => new Intl.NumberFormat('vi-VN', { maximumFractionDigits: d, minimumFractionDigits: d }).format(v * 100) + '%';
 
 const pad = (n) => String(n).padStart(2, '0');
-// mọi giờ hiển thị theo giờ Việt Nam (UTC+7), bất kể máy người xem đặt múi giờ nào
+// Mọi giờ hiển thị theo giờ Việt Nam (UTC+7), bất kể máy người xem đặt múi giờ nào
 const vn = (d) => new Date(new Date(d).getTime() + 7 * 3600000);
 export const time = (d) => { const x = vn(d); return `${pad(x.getUTCHours())}:${pad(x.getUTCMinutes())}`; };
 export const date = (d) => { const x = vn(d); return `${pad(x.getUTCDate())}/${pad(x.getUTCMonth() + 1)}/${x.getUTCFullYear()}`; };
