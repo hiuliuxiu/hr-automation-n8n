@@ -1,0 +1,603 @@
+{
+  "name": "WF2-A - Tiep nhan nhan vien moi",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "25cacb03-4eb0-4762-91d0-fc319d03134c",
+      "name": "Chạy thủ công A",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        144,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "956a1791-7aaf-4738-a07c-d1db387dd657",
+      "name": "Lịch A — 08:00 hằng ngày",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        144,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "action"
+            },
+            {
+              "name": "employee_id"
+            }
+          ]
+        }
+      },
+      "id": "c0865c08-0577-4edf-a817-afbfac399ed2",
+      "name": "Được cổng HR gọi",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -112,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "onboard",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "54682227-a9cd-49e7-a812-933c058d59d7"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "onboard"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "710fd859-0c67-493f-992e-0cdfe6f4a715",
+      "name": "Yêu cầu từ cổng HR",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        144,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n  (select jsonb_object_agg(s.key, s.value) from public.app_settings s) as settings,\n  to_char(now() at time zone 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD') as today,\n  coalesce((\n    select jsonb_agg(jsonb_build_object(\n      'candidate_id', c.candidate_id, 'full_name', c.full_name, 'email', c.email, 'job_id', c.job_id,\n      'job_title', j.title, 'department', j.department, 'hiring_manager', j.hiring_manager, 'is_sample', c.is_sample,\n      'hired_on', (select to_char(max(e.occurred_at) at time zone 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD') from public.candidate_events e\n                    where e.candidate_id = c.candidate_id and e.to_status = 'hired'),\n      'email_taken', exists (select 1 from public.employees x where lower(x.email) = lower(c.email)),\n      'ai_summary', a.summary, 'skills_to_verify', a.skills_to_verify, 'declared_role', a.declared_role,\n      'templates', coalesce((select jsonb_agg(jsonb_build_object('template_id', t.template_id, 'task_name', t.task_name,\n                     'category', t.category, 'owner_role', t.owner_role, 'due_offset_days', t.due_offset_days, 'course_id', t.course_id)\n                     order by t.due_offset_days, t.template_id)\n                   from public.onboarding_templates t where t.job_id = c.job_id and t.status = 'active'), '[]'::jsonb)\n    ) order by c.candidate_id)\n    from public.candidates c\n    join public.jobs j on j.job_id = c.job_id\n    left join lateral (select y.summary, y.skills_to_verify, y.declared_role from public.cv_analyses y\n                       where y.candidate_id = c.candidate_id order by y.analyzed_at desc limit 1) a on true\n    where c.status = 'hired' and not exists (select 1 from public.employees x where x.candidate_id = c.candidate_id)\n  ), '[]'::jsonb) as pending,\n  coalesce((select jsonb_agg(jsonb_build_object('course_id', k.course_id, 'course_name', k.name, 'skill', k.skill, 'job_id', k.job_id,\n              'level', k.level, 'prerequisite_course_id', k.prerequisite_id, 'duration_hours', k.duration_hours,\n              'cost_vnd', k.cost_vnd, 'material_url', k.material_url) order by k.course_id)\n            from public.courses k where k.status = 'active'), '[]'::jsonb) as catalog;",
+        "options": {}
+      },
+      "id": "57023cf3-cce2-427b-a959-5ca283412ed5",
+      "name": "A · Đọc ứng viên chờ onboarding (PG)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        384,
+        16
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "13NK6Lur6RRAj7oh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function parseVN(v) { const m = String(v ?? '').match(/^(\\d{4})-(\\d{2})-(\\d{2})/); return m ? new Date(Date.UTC(+m[1], m[2] - 1, +m[3])) : null; }\nfunction pad2(n) { return String(n).padStart(2, '0'); }\nfunction fmtVN(d) { return d ? pad2(d.getUTCDate()) + '/' + pad2(d.getUTCMonth() + 1) + '/' + d.getUTCFullYear() : ''; }\nfunction fmtISO(d) { return d ? d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate()) : ''; }\nfunction addDays(d, n) { return new Date(d.getTime() + Number(n || 0) * 86400000); }\n\n// Ứng viên đã hired nhưng chưa có hồ sơ nhân viên (DB đã lọc): dựng sẵn checklist và lộ trình đào tạo.\nconst r = $input.first().json;\nconst today = parseVN(r.today);\nconst catalog = Array.isArray(r.catalog) ? r.catalog : [];\nconst byId = Object.fromEntries(catalog.map(c => [c.course_id, c]));\nconst skipped = [];\nconst packages = [];\n\nfor (const c of (Array.isArray(r.pending) ? r.pending : [])) {\n  if (!c.email) { skipped.push({ candidate_id: c.candidate_id, reason: 'thiếu email' }); continue; }\n  if (c.email_taken) { skipped.push({ candidate_id: c.candidate_id, reason: 'email đã thuộc một nhân viên khác' }); continue; }\n\n  // Ngày bắt đầu = ngày hồ sơ chuyển sang hired (lấy từ lịch sử trạng thái), như bản Sheets.\n  const start = parseVN(c.hired_on) || today;\n  const tasks = (c.templates || []).map(t => {\n    let due = addDays(start, t.due_offset_days);\n    // Việc chuẩn bị (offset âm) có thể rơi vào quá khứ: dồn hạn về hôm nay thay vì để quá hạn sẵn.\n    if (due.getTime() < today.getTime()) due = today;\n    return {\n      template_id: t.template_id, task_name: t.task_name, category: t.category,\n      owner_role: t.owner_role, due_date: fmtISO(due), course_id: t.course_id || '',\n    };\n  });\n\n  const seen = new Set();\n  const trainings = [];\n  for (const t of tasks) {\n    if (!t.course_id || seen.has(t.course_id)) continue;\n    seen.add(t.course_id);\n    const crs = byId[t.course_id] || {};\n    trainings.push({\n      course_id: t.course_id, source: 'template', assigned_on: fmtISO(start), due_on: t.due_date,\n      cost_vnd: crs.cost_vnd ?? '', note: 'Gán tự động theo checklist mẫu của vị trí.',\n      course_name: crs.course_name || '', material_url: crs.material_url || '',\n    });\n  }\n\n  const skills = Array.isArray(c.skills_to_verify) ? c.skills_to_verify.join('; ') : '';\n  const ai_prompt = [\n    'Bạn là trợ lý nhân sự của công ty ABC Tech. Nhiệm vụ: gợi ý lộ trình đào tạo cho nhân viên mới.',\n    '',\n    'THÔNG TIN NHÂN VIÊN:',\n    '- Họ tên: ' + (c.full_name || ''),\n    '- Vị trí: ' + (c.job_title || c.declared_role || ''),\n    '- Phòng ban: ' + (c.department || ''),\n    '- Kỹ năng cần xác minh: ' + (skills || 'không ghi'),\n    '- Tóm tắt CV: ' + String(c.ai_summary || 'không ghi').slice(0, 600),\n    '',\n    'DANH MỤC KHÓA HỌC CÓ SẴN (chỉ được chọn trong danh sách này):',\n    JSON.stringify(catalog.map(x => ({ course_id: x.course_id, course_name: x.course_name, skill: x.skill, job_id: x.job_id || '', level: x.level || '', prerequisite_course_id: x.prerequisite_course_id || '', duration_hours: x.duration_hours })), null, 1),\n    '',\n    'KHÓA ĐÃ GÁN SẴN THEO MẪU ONBOARDING: ' + (trainings.map(t => t.course_id).join(', ') || 'không có'),\n    '',\n    'YÊU CẦU:',\n    '1. Chỉ dùng course_id có thật trong danh mục trên. TUYỆT ĐỐI không bịa khóa học mới.',\n    '2. Đề xuất tối đa 2 khóa BỔ SUNG ngoài các khóa đã gán sẵn (có thể để mảng rỗng nếu không cần).',\n    '3. KHÔNG đề xuất khóa advanced nếu khóa prerequisite_course_id của nó chưa nằm trong danh sách đã gán.',\n    '4. Ưu tiên khóa basic lấp khoảng trống kỹ năng mềm nếu nhân viên đã đủ khóa chuyên môn.',\n    '5. Viết nhận xét lộ trình ngắn gọn, tối đa 60 từ, bằng tiếng Việt.',\n    '',\n    'Trả về DUY NHẤT một object JSON, không kèm giải thích, không kèm markdown:',\n    '{\"extra_course_ids\": [\"CRS-00X\"], \"plan_note\": \"...\"}',\n  ].join('\\n');\n\n  packages.push({ json: {\n    _noop: false,\n    candidate_id: c.candidate_id, full_name: c.full_name, email: c.email,\n    job_id: c.job_id, job_title: c.job_title || '', department: c.department || '',\n    manager: c.hiring_manager || '', buddy: '', is_sample: !!c.is_sample,\n    start_date: fmtISO(start), start_date_vn: fmtVN(start),\n    tasks, trainings, catalog_ids: catalog.map(x => x.course_id), ai_prompt,\n  } });\n}\n\nif (packages.length === 0) {\n  return [{ json: { _noop: true, skipped, message: 'Không có ứng viên hired nào chờ onboarding.' } }];\n}\npackages[0].json._skipped = skipped;\nreturn packages;\n"
+      },
+      "id": "2072b9cf-c792-4de7-958a-ddff163e0d52",
+      "name": "Dựng gói onboarding",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a2000000-0000-4000-8000-000000000013",
+              "leftValue": "={{ $json._noop }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "4447f7f0-7cfe-47ec-9da0-0d096ca1a893",
+      "name": "Có ứng viên mới?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        848,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.ai_prompt }}"
+      },
+      "id": "143c3f47-0f0b-45f7-8756-88a2daafb908",
+      "name": "AI: gợi ý lộ trình đào tạo",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.6,
+      "position": [
+        1072,
+        -96
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.8-flash",
+        "options": {}
+      },
+      "id": "4288dfb5-7623-4176-966f-625aa2555ea6",
+      "name": "Google Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1072,
+        112
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function parseVN(v) { const m = String(v ?? '').match(/^(\\d{4})-(\\d{2})-(\\d{2})/); return m ? new Date(Date.UTC(+m[1], m[2] - 1, +m[3])) : null; }\nfunction pad2(n) { return String(n).padStart(2, '0'); }\nfunction fmtISO(d) { return d ? d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate()) : ''; }\nfunction addDays(d, n) { return new Date(d.getTime() + Number(n || 0) * 86400000); }\n\n// Nhận kết quả AI, chỉ giữ course_id có thật trong danh mục, gộp vào lộ trình đào tạo.\nconst src = $('A · Đọc ứng viên chờ onboarding (PG)').first().json;\nconst settings = src.settings || {};\nconst byId = Object.fromEntries((src.catalog || []).map(c => [c.course_id, c]));\nconst pkgs = $('Dựng gói onboarding').all().map(i => i.json);\n\nlet aiItems = [];\ntry { aiItems = $('AI: gợi ý lộ trình đào tạo').all(); } catch (e) { aiItems = []; }\n\nreturn pkgs.map((p0, i) => {\n  const p = JSON.parse(JSON.stringify(p0));\n  let planNote = '';\n  let extras = [];\n  let aiStatus = 'off';\n\n  if (settings.training_ai !== false && aiItems[i]) {\n    aiStatus = 'ok';\n    const raw = String(aiItems[i].json.text || aiItems[i].json.response || aiItems[i].json.output || '');\n    const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();\n    const a = cleaned.indexOf('{');\n    const b = cleaned.lastIndexOf('}');\n    try {\n      if (a < 0 || b < 0) throw new Error('không tìm thấy JSON');\n      const parsed = JSON.parse(cleaned.slice(a, b + 1));\n      planNote = String(parsed.plan_note || '').trim();\n      const allowed = new Set(p.catalog_ids);\n      const already = new Set(p.trainings.map(t => t.course_id));\n      extras = (Array.isArray(parsed.extra_course_ids) ? parsed.extra_course_ids : [])\n        .map(x => String(x).trim())\n        .filter(x => allowed.has(x) && !already.has(x))\n        .slice(0, 2);\n    } catch (e) {\n      aiStatus = 'fallback';\n      planNote = 'AI trả về không đúng định dạng — giữ nguyên lộ trình theo mẫu onboarding.';\n      extras = [];\n    }\n  }\n\n  const start = parseVN(p.start_date);\n  for (const cid of extras) {\n    const crs = byId[cid] || {};\n    p.trainings.push({\n      course_id: cid, source: 'ai_suggested', assigned_on: p.start_date, due_on: fmtISO(addDays(start, 14)),\n      cost_vnd: crs.cost_vnd ?? '', note: 'AI đề xuất bổ sung (Workflow 2).',\n      course_name: crs.course_name || '', material_url: crs.material_url || '',\n    });\n  }\n  return { json: { ...p, ai_status: aiStatus, ai_extra_ids: extras, plan_note: planNote } };\n});\n"
+      },
+      "id": "b92acb7f-a856-407b-a3c8-d63f840516b1",
+      "name": "Chuẩn hóa gợi ý AI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1312,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with p as (select $1::jsonb as j),\nemp as (\n  insert into public.employees (candidate_id, job_id, full_name, email, start_date, manager, buddy, is_sample)\n  select p.j->>'candidate_id', p.j->>'job_id', p.j->>'full_name', p.j->>'email', (p.j->>'start_date')::date,\n         nullif(p.j->>'manager', ''), nullif(p.j->>'buddy', ''), coalesce((p.j->>'is_sample')::boolean, false)\n  from p\n  on conflict (candidate_id) do nothing\n  returning employee_id\n),\ntasks as (\n  insert into public.onboarding_tasks (employee_id, template_id, task_name, category, owner_role, due_date, course_id)\n  select emp.employee_id, nullif(t->>'template_id', ''), t->>'task_name', t->>'category', t->>'owner_role',\n         (t->>'due_date')::date, nullif(t->>'course_id', '')\n  from emp, p, jsonb_array_elements(p.j->'tasks') as t\n  returning task_id\n),\ntrs as (\n  insert into public.trainings (employee_id, course_id, source, assigned_on, due_on, cost_vnd, note)\n  select emp.employee_id, r->>'course_id', r->>'source', (r->>'assigned_on')::date, nullif(r->>'due_on', '')::date,\n         nullif(r->>'cost_vnd', '')::numeric, nullif(r->>'note', '')\n  from emp, p, jsonb_array_elements(p.j->'trainings') as r\n  returning training_id\n)\nselect (select employee_id from emp) as employee_id,\n       (select count(*) from tasks)::int as task_count,\n       (select count(*) from trs)::int as training_count;",
+        "options": {
+          "queryBatching": "independently",
+          "queryReplacement": "={{ [JSON.stringify($json)] }}"
+        }
+      },
+      "id": "e905eb8e-157b-4d6a-8abf-06410cb30b20",
+      "name": "A · Tạo nhân viên, checklist, đào tạo (PG)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1552,
+        -96
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "13NK6Lur6RRAj7oh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function parseVN(v) { const m = String(v ?? '').match(/^(\\d{4})-(\\d{2})-(\\d{2})/); return m ? new Date(Date.UTC(+m[1], m[2] - 1, +m[3])) : null; }\nfunction pad2(n) { return String(n).padStart(2, '0'); }\nfunction fmtVN(d) { return d ? pad2(d.getUTCDate()) + '/' + pad2(d.getUTCMonth() + 1) + '/' + d.getUTCFullYear() : ''; }\nfunction hienThiNgay(v) { const d = parseVN(v); return d ? fmtVN(d) : String(v || ''); }\n\nconst settings = $('A · Đọc ứng viên chờ onboarding (PG)').first().json.settings || {};\nconst pkgs = $('Chuẩn hóa gợi ý AI').all().map(i => i.json);\nconst saved = $input.all().map(i => i.json);\nconst out = [];\n\npkgs.forEach((d, i) => {\n  const r = saved[i] || {};\n  if (!r.employee_id) return;   // ứng viên đã có hồ sơ nhân viên từ lần chạy trước\n  const lines = d.tasks\n    .map((t, k) => (k + 1) + '. ' + t.task_name + '  —  hạn ' + hienThiNgay(t.due_date) + ' (phụ trách: ' + t.owner_role + ')')\n    .join('\\n');\n  const trainLines = d.trainings\n    .map(t => '- ' + t.course_id + ' ' + (t.course_name || '') + ' — hạn ' + hienThiNgay(t.due_on)\n      + (t.material_url ? '\\n  Tài liệu: ' + t.material_url : ''))\n    .join('\\n');\n\n  const body = [\n    'Chào ' + d.full_name + ',',\n    '',\n    'Chào mừng bạn gia nhập ABC Tech ở vị trí ' + (d.job_title || d.job_id) + '.',\n    '',\n    'Mã nhân viên: ' + r.employee_id,\n    'Ngày bắt đầu: ' + d.start_date_vn,\n    '',\n    'CHECKLIST ONBOARDING (' + d.tasks.length + ' đầu việc):',\n    lines,\n    '',\n    'LỘ TRÌNH ĐÀO TẠO (' + d.trainings.length + ' khóa):',\n    trainLines || '- (chưa có khóa nào)',\n    d.plan_note ? '\\nGợi ý lộ trình: ' + d.plan_note : '',\n    '',\n    'Quản lý và buddy sẽ liên hệ với bạn trong ngày làm việc đầu tiên.',\n    '',\n    '---',\n    'Email tự động từ hệ thống HR (Workflow 2).',\n  ].join('\\n');\n\n  out.push({ json: {\n    send: settings.wf2_dry_run !== true,\n    to: settings.wf2_send_to_real_email === false ? (settings.demo_email || settings.hr_notify_email) : d.email,\n    subject: 'Chào mừng ' + d.full_name + ' — thông tin onboarding (' + r.employee_id + ')',\n    body,\n    employee_id: r.employee_id,\n  } });\n});\nreturn out;\n"
+      },
+      "id": "c28b2f9e-b9ee-4a8a-bf2a-a2e88199a6f7",
+      "name": "Soạn mail chào mừng",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        -192
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a2000000-0000-4000-8000-000000000027",
+              "leftValue": "={{ $json.send }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "851a1163-6889-4c42-aa90-0d976cc79069",
+      "name": "Gửi mail chào mừng?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2016,
+        -192
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.body }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "e8969f74-2650-4a47-be0e-d770fd14d072",
+      "name": "Gmail: mail chào mừng",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2240,
+        -192
+      ],
+      "webhookId": "19035824-7c4a-4798-b7f5-11f679f225c5",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "fw6f1aLTh9rJ2pbq",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const settings = $('A · Đọc ứng viên chờ onboarding (PG)').first().json.settings || {};\nconst pkgs = $('Chuẩn hóa gợi ý AI').all().map(i => i.json);\nconst saved = $('A · Tạo nhân viên, checklist, đào tạo (PG)').all().map(i => i.json);\nconst skipped = $('Dựng gói onboarding').first().json._skipped || [];\n\nconst logs = pkgs.map((d, i) => {\n  const r = saved[i] || {};\n  if (!r.employee_id) {\n    return { entity_id: d.candidate_id, event: 'onboarding_skipped', level: 'skipped',\n      message: d.candidate_id + ' đã có hồ sơ nhân viên, không tạo lại.' };\n  }\n  return { entity_id: r.employee_id, event: 'onboarding_created', level: 'success',\n    message: 'Tạo ' + r.employee_id + ' (' + d.full_name + ', ' + d.job_id + ') từ ' + d.candidate_id + ' với '\n      + r.task_count + ' đầu việc, ' + r.training_count + ' khóa đào tạo. AI: ' + d.ai_status\n      + (d.ai_extra_ids.length ? ' (+' + d.ai_extra_ids.join(',') + ')' : '') + '.'\n      + (settings.wf2_dry_run === true ? ' Chạy thử: không gửi email.' : '') };\n});\nfor (const s of skipped) {\n  logs.push({ entity_id: s.candidate_id, event: 'onboarding_skipped', level: 'warning',\n    message: 'Bỏ qua ' + s.candidate_id + ': ' + s.reason + '.' });\n}\nreturn [{ json: { logs } }];\n"
+      },
+      "id": "faf72a3e-5eaf-4c97-bfbf-b700c2a18b66",
+      "name": "Ghi log nhánh A",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into public.automation_logs (workflow, entity_id, event, level, message, n8n_execution_id)\nselect 'WF2', nullif(x->>'entity_id', ''), x->>'event', x->>'level', x->>'message', $2\nfrom jsonb_array_elements($1::jsonb) as x\nreturning log_id;",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify($json.logs || []), String($execution.id)] }}"
+        }
+      },
+      "id": "1ee7dddf-5e6d-49ee-8e82-48593a01270c",
+      "name": "A · Ghi nhật ký (PG)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        2016,
+        16
+      ],
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "13NK6Lur6RRAj7oh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst skipped = d.skipped || [];\nreturn [{ json: { logs: [{\n  entity_id: '', event: 'no_new_hire', level: 'skipped',\n  message: 'Không có ứng viên hired nào chờ onboarding.'\n    + (skipped.length ? ' Bỏ qua: ' + skipped.map(s => s.candidate_id + ' (' + s.reason + ')').join('; ') : ''),\n}] } }];\n"
+      },
+      "id": "6f59afa2-1dbf-426e-a961-0cfbd538ff01",
+      "name": "Log: không có ứng viên mới",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1072,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into public.automation_logs (workflow, entity_id, event, level, message, n8n_execution_id)\nselect 'WF2', nullif(x->>'entity_id', ''), x->>'event', x->>'level', x->>'message', $2\nfrom jsonb_array_elements($1::jsonb) as x\nreturning log_id;",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify($json.logs || []), String($execution.id)] }}"
+        }
+      },
+      "id": "74e9cfb5-7783-4352-9921-db0b23a8cec1",
+      "name": "A · Ghi nhật ký bỏ qua (PG)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1312,
+        256
+      ],
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "13NK6Lur6RRAj7oh",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Chạy thủ công A": {
+      "main": [
+        [
+          {
+            "node": "A · Đọc ứng viên chờ onboarding (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lịch A — 08:00 hằng ngày": {
+      "main": [
+        [
+          {
+            "node": "A · Đọc ứng viên chờ onboarding (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Được cổng HR gọi": {
+      "main": [
+        [
+          {
+            "node": "Yêu cầu từ cổng HR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Yêu cầu từ cổng HR": {
+      "main": [
+        [
+          {
+            "node": "A · Đọc ứng viên chờ onboarding (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A · Đọc ứng viên chờ onboarding (PG)": {
+      "main": [
+        [
+          {
+            "node": "Dựng gói onboarding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dựng gói onboarding": {
+      "main": [
+        [
+          {
+            "node": "Có ứng viên mới?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Có ứng viên mới?": {
+      "main": [
+        [
+          {
+            "node": "AI: gợi ý lộ trình đào tạo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log: không có ứng viên mới",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: gợi ý lộ trình đào tạo": {
+      "main": [
+        [
+          {
+            "node": "Chuẩn hóa gợi ý AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI: gợi ý lộ trình đào tạo",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chuẩn hóa gợi ý AI": {
+      "main": [
+        [
+          {
+            "node": "A · Tạo nhân viên, checklist, đào tạo (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A · Tạo nhân viên, checklist, đào tạo (PG)": {
+      "main": [
+        [
+          {
+            "node": "Soạn mail chào mừng",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ghi log nhánh A",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Soạn mail chào mừng": {
+      "main": [
+        [
+          {
+            "node": "Gửi mail chào mừng?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gửi mail chào mừng?": {
+      "main": [
+        [
+          {
+            "node": "Gmail: mail chào mừng",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ghi log nhánh A": {
+      "main": [
+        [
+          {
+            "node": "A · Ghi nhật ký (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log: không có ứng viên mới": {
+      "main": [
+        [
+          {
+            "node": "A · Ghi nhật ký bỏ qua (PG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "a40a1013-2895-4074-be43-cc3368b9b157",
+  "meta": {
+    "instanceId": "5edd7ae671d46ac0a18b20207b7aba62d25a1f32d5cbc1ee602d7124f7fc4f8a"
+  },
+  "nodeGroups": [
+    {
+      "id": "69962dd7-96b9-4a08-8c7c-30fac201740e",
+      "name": "Nhánh A · Tạo hồ sơ nhân viên mới",
+      "nodeIds": [
+        "57023cf3-cce2-427b-a959-5ca283412ed5",
+        "2072b9cf-c792-4de7-958a-ddff163e0d52",
+        "4447f7f0-7cfe-47ec-9da0-0d096ca1a893",
+        "143c3f47-0f0b-45f7-8756-88a2daafb908",
+        "4288dfb5-7623-4176-966f-625aa2555ea6",
+        "b92acb7f-a856-407b-a3c8-d63f840516b1",
+        "e905eb8e-157b-4d6a-8abf-06410cb30b20",
+        "c28b2f9e-b9ee-4a8a-bf2a-a2e88199a6f7",
+        "851a1163-6889-4c42-aa90-0d976cc79069",
+        "e8969f74-2650-4a47-be0e-d770fd14d072",
+        "faf72a3e-5eaf-4c97-bfbf-b700c2a18b66",
+        "1ee7dddf-5e6d-49ee-8e82-48593a01270c",
+        "6f59afa2-1dbf-426e-a961-0cfbd538ff01",
+        "74e9cfb5-7783-4352-9921-db0b23a8cec1"
+      ],
+      "description": "08:00 mỗi ngày, chạy tay, hoặc cổng HR gọi ngay khi HR bấm Nhận việc"
+    }
+  ],
+  "id": "IbrSQYIeqGphpQTH",
+  "tags": []
+}
